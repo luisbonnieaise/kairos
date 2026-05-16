@@ -1,0 +1,205 @@
+import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
+import 'i18n.dart';
+
+class KairoNotificacoes {
+  static final _plugin = FlutterLocalNotificationsPlugin();
+  static bool _inicializado = false;
+
+  // Frases curtas do Mentor (vem do i18n no idioma atual)
+  static String _fraseAleatoria() {
+    final frases = T.frasesNotificacao;
+    return frases[math.Random().nextInt(frases.length)];
+  }
+
+  static Future<void> inicializar() async {
+    if (_inicializado) return;
+
+    tz.initializeTimeZones();
+    // Define o timezone local (sem isso, todas as notificações disparam em UTC)
+    try {
+      final nomeFuso = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(nomeFuso));
+    } catch (e) {
+      debugPrint('Erro ao detectar timezone: $e — usando UTC');
+    }
+
+    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const ios = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+
+    await _plugin.initialize(
+      const InitializationSettings(android: android, iOS: ios),
+    );
+
+    _inicializado = true;
+  }
+
+  static Future<bool> pedirPermissao() async {
+    final status = await Permission.notification.request();
+    return status.isGranted;
+  }
+
+  static Future<bool> temPermissao() async {
+    final status = await Permission.notification.status;
+    return status.isGranted;
+  }
+
+  /// Agenda um lembrete diário no horário informado.
+  /// Cancela o anterior antes de criar o novo.
+  static Future<void> agendarLembreteDiario(int hora, int minuto) async {
+    await inicializar();
+    await cancelarLembrete();
+
+    final agora = tz.TZDateTime.now(tz.local);
+    var quando = tz.TZDateTime(
+      tz.local,
+      agora.year,
+      agora.month,
+      agora.day,
+      hora,
+      minuto,
+    );
+
+    // Se o horário já passou hoje, agenda pra amanhã
+    if (quando.isBefore(agora)) {
+      quando = quando.add(const Duration(days: 1));
+    }
+
+    const detalhes = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'kairo_pratica',
+        'Lembrete de prática',
+        channelDescription: 'Lembrete diário do Mentor',
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(),
+    );
+
+    await _plugin.zonedSchedule(
+      1, // id fixo pro lembrete de prática (futuras notifs usam outros ids)
+      T.mentor,
+      _fraseAleatoria(),
+      quando,
+      detalhes,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.time, // repete diariamente
+    );
+  }
+
+  static Future<void> cancelarLembrete() async {
+    await inicializar();
+    await _plugin.cancel(1);
+  }
+
+  /// Agenda a carta semanal — todo domingo às 21:00.
+  static Future<void> agendarCartaSemanal() async {
+    await inicializar();
+    await _plugin.cancel(2);
+
+    final agora = tz.TZDateTime.now(tz.local);
+    // domingo às 21:00. weekday: 1 = segunda ... 7 = domingo
+    var quando = tz.TZDateTime(tz.local, agora.year, agora.month, agora.day, 21, 0);
+
+    // Avança até o próximo domingo
+    while (quando.weekday != DateTime.sunday || quando.isBefore(agora)) {
+      quando = quando.add(const Duration(days: 1));
+    }
+
+    const detalhes = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'kairo_carta',
+        'Carta semanal',
+        channelDescription: 'A carta de domingo do Mentor',
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(),
+    );
+
+    await _plugin.zonedSchedule(
+      2,
+      T.mentor,
+      T.cartaDomingoChegou,
+      quando,
+      detalhes,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime, // toda semana
+    );
+  }
+
+  static Future<void> cancelarCartaSemanal() async {
+    await inicializar();
+    await _plugin.cancel(2);
+  }
+
+  /// Agenda as 3 notificações do Jardim:
+  /// - Manhã: 8:00
+  /// - Tarde: 13:00
+  /// - Noite: 20:00
+  static Future<void> agendarJardim() async {
+    await inicializar();
+    await _plugin.cancel(3);
+    await _plugin.cancel(4);
+    await _plugin.cancel(5);
+
+    await _agendarJardimMomento(3, 8, 0, T.notifJardimManha);
+    await _agendarJardimMomento(4, 13, 0, T.notifJardimTarde);
+    await _agendarJardimMomento(5, 20, 0, T.notifJardimNoite);
+  }
+
+  static Future<void> _agendarJardimMomento(
+    int id,
+    int hora,
+    int minuto,
+    String corpo,
+  ) async {
+    final agora = tz.TZDateTime.now(tz.local);
+    var quando = tz.TZDateTime(
+      tz.local, agora.year, agora.month, agora.day, hora, minuto,
+    );
+    if (quando.isBefore(agora)) {
+      quando = quando.add(const Duration(days: 1));
+    }
+
+    const detalhes = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'kairo_jardim',
+        'Jardim',
+        channelDescription: 'Perguntas do Mentor no Jardim',
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(),
+    );
+
+    await _plugin.zonedSchedule(
+      id,
+      T.mentor,
+      corpo,
+      quando,
+      detalhes,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.time, // repete diariamente
+    );
+  }
+
+  static Future<void> cancelarJardim() async {
+    await inicializar();
+    await _plugin.cancel(3);
+    await _plugin.cancel(4);
+    await _plugin.cancel(5);
+  }
+}
