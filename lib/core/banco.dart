@@ -376,8 +376,13 @@ class BancoRelatorios {
   }
 
   /// Gera a carta da semana atual via Edge Function.
-  static Future<Map<String, dynamic>?> gerar() async {
-    final resposta = await supabase.functions.invoke('relatorio-semanal');
+  /// [semanaInicio] é a data calculada em tempo LOCAL pelo Flutter (YYYY-MM-DD).
+  /// Passar esse valor evita que o edge function use UTC e calcule a semana errada.
+  static Future<Map<String, dynamic>?> gerar({required String semanaInicio}) async {
+    final resposta = await supabase.functions.invoke(
+      'relatorio-semanal',
+      body: {'semana_inicio': semanaInicio},
+    );
 
     if (resposta.status != 200) {
       throw Exception('Erro ${resposta.status}: ${resposta.data}');

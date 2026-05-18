@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/kairo_tema.dart';
@@ -150,10 +149,31 @@ class _TelaMentorState extends State<TelaMentor> {
     return SafeArea(
       child: Column(
         children: [
-          // Cabeçalho minimalista — sem borda, sem barras pesadas
+          // Cabeçalho — mesmo padrão visual do Dojô
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
-            child: Text(T.mentor, style: KT.titulo()),
+            padding: const EdgeInsets.fromLTRB(24, 48, 24, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    KairoEnso(
+                      tamanho: 36,
+                      cor: KC.acento.withValues(alpha: 0.75),
+                      duracao: const Duration(seconds: 12),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(child: KT.tituloGradiente(T.mentor)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(T.mentorSubtitulo, style: KT.caption()),
+                const SizedBox(height: 32),
+                KT.divisor(),
+              ],
+            ),
           ),
 
           // Fluxo de mensagens — sem balões, texto puro
@@ -184,6 +204,14 @@ class _TelaMentorState extends State<TelaMentor> {
               decoration: BoxDecoration(
                 color: KC.card,
                 borderRadius: BorderRadius.circular(24),
+                border: KC.escuro ? null : Border.all(color: KC.linha, width: 1),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: KC.escuro ? 0.22 : 0.07),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: Row(
                 children: [
@@ -266,7 +294,7 @@ class _IndicadorPensandoState extends State<_IndicadorPensando>
         children: [
           AnimatedBuilder(
             animation: _ctrl,
-            builder: (_, __) {
+            builder: (_, _) {
               return SizedBox(
                 width: 30,
                 height: 30,
@@ -296,7 +324,7 @@ class _PontosAnimados extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: animacao,
-      builder: (_, __) {
+      builder: (_, _) {
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: List.generate(3, (i) {
@@ -453,73 +481,6 @@ class _TextoAnimadoState extends State<_TextoAnimado>
   }
 }
 
-// ── ENSŌ "PENSANDO" ──────────────────────────────────────────────────────────
-
-class _EnsoPensando extends StatefulWidget {
-  const _EnsoPensando();
-
-  @override
-  State<_EnsoPensando> createState() => _EnsoPensandoState();
-}
-
-class _EnsoPensandoState extends State<_EnsoPensando>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2400),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, _) {
-        return SizedBox(
-          width: 18,
-          height: 18,
-          child: CustomPaint(
-            painter: _EnsoPainter(progresso: _ctrl.value),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _EnsoPainter extends CustomPainter {
-  final double progresso;
-  _EnsoPainter({required this.progresso});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = KC.kin
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5
-      ..strokeCap = StrokeCap.round;
-
-    final rect = Offset.zero & size;
-    final startAngle = -math.pi / 2;
-    final sweepAngle = progresso * 2 * math.pi * 0.92;
-
-    canvas.drawArc(rect.deflate(1), startAngle, sweepAngle, false, paint);
-  }
-
-  @override
-  bool shouldRepaint(_EnsoPainter old) => old.progresso != progresso;
-}
 
 // ── MODELO DE MENSAGEM ───────────────────────────────────────────────────────
 

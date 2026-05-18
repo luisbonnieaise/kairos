@@ -43,6 +43,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/build/
+
+# Stray Flutter screenshot captures
+flutter_*.png
 
 # Secrets — nunca commitar
 .env

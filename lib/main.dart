@@ -45,6 +45,12 @@ void main() async {
 // Atalho global para acessar o cliente Supabase de qualquer lugar
 final supabase = Supabase.instance.client;
 
+// Notifica a navbar quando há uma carta semanal não lida
+final cartaNovaNotifier = ValueNotifier<bool>(false);
+
+// Notifica a navbar quando há uma pergunta do Jardim não respondida
+final jardimNovaNotifier = ValueNotifier<bool>(false);
+
 class KairoApp extends StatelessWidget {
   const KairoApp({super.key});
 
@@ -54,7 +60,7 @@ class KairoApp extends StatelessWidget {
     // Perfil, toda a árvore reconstrói com as novas cores.
     return ValueListenableBuilder<bool>(
       valueListenable: KC.temaEscuro,
-      builder: (context, _, __) {
+      builder: (context, _, _) {
         return MaterialApp(
           key: ValueKey('kairo-tema-${KC.escuro}'),
           title: 'Kairo',
@@ -132,8 +138,8 @@ class _TelaSplashState extends State<TelaSplash>
     Navigator.pushReplacement(
       context,
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => tela,
-        transitionsBuilder: (_, anim, __, child) =>
+        pageBuilder: (_, _, _) => tela,
+        transitionsBuilder: (_, anim, _, child) =>
             FadeTransition(opacity: anim, child: child),
         transitionDuration: const Duration(milliseconds: 600),
       ),
@@ -274,9 +280,9 @@ class TelaBoasVindas extends StatelessWidget {
                     Navigator.push(
                       context,
                       PageRouteBuilder(
-                        pageBuilder: (_, __, ___) =>
+                        pageBuilder: (_, _, _) =>
                             const TelaAuth(ehCadastro: true),
-                        transitionsBuilder: (_, anim, __, child) =>
+                        transitionsBuilder: (_, anim, _, child) =>
                             FadeTransition(opacity: anim, child: child),
                         transitionDuration: const Duration(milliseconds: 400),
                       ),
@@ -303,9 +309,9 @@ class TelaBoasVindas extends StatelessWidget {
                     Navigator.push(
                       context,
                       PageRouteBuilder(
-                        pageBuilder: (_, __, ___) =>
+                        pageBuilder: (_, _, _) =>
                             const TelaAuth(ehCadastro: false),
-                        transitionsBuilder: (_, anim, __, child) =>
+                        transitionsBuilder: (_, anim, _, child) =>
                             FadeTransition(opacity: anim, child: child),
                         transitionDuration: const Duration(milliseconds: 400),
                       ),

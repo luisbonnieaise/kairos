@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -149,6 +150,60 @@ class KT {
     height: 1.2,
     color: cor ?? KC.textoSuave,
   );
+
+  // Divisor com sombra abaixo — cria sensação de profundidade
+  static Widget divisor() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(height: 1, color: KC.linha),
+        Container(
+          height: 10,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withValues(alpha: KC.escuro ? 0.18 : 0.06),
+                Colors.transparent,
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Degradê marrom — mesmo efeito do "Boa noite" na tela inicial
+  static Widget tituloGradiente(
+    String texto, {
+    TextStyle? estilo,
+    int? maxLines,
+    TextOverflow? overflow,
+  }) {
+    final colors = KC.escuro
+        ? const [Color(0xFFA06A3A), Color(0xFFD4A373)]
+        : const [Color(0xFF8C5A30), Color(0xFFC28B63)];
+    return ShaderMask(
+      shaderCallback: (bounds) => LinearGradient(
+        colors: colors,
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ).createShader(bounds),
+      blendMode: BlendMode.srcIn,
+      child: Padding(
+        // Padding expande o layout bounds do ShaderMask, forçando o saveLayer
+        // a incluir a área do descender do "j" (e outros: g, p, y…)
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(
+          texto,
+          maxLines: maxLines,
+          overflow: overflow,
+          style: (estilo ?? KT.displayL()).copyWith(color: Colors.white),
+        ),
+      ),
+    );
+  }
 }
 
 // ── TEMA GLOBAL DO FLUTTER ────────────────────────────────────────────────────
@@ -182,4 +237,102 @@ ThemeData kairoTema() {
       },
     ),
   );
+}
+
+// ── ENSŌ ANIMADO ──────────────────────────────────────────────────────────────
+//
+// Widget público reutilizável em qualquer tela.
+// O traço é calligráfico (espessura variável) e escala proporcionalmente
+// ao tamanho via raiz quadrada — fino em tamanhos pequenos, ainda delicado
+// nos maiores.
+
+class KairoEnso extends StatefulWidget {
+  final double tamanho;
+  final Color? cor;
+  final Duration duracao;
+
+  const KairoEnso({
+    super.key,
+    required this.tamanho,
+    this.cor,
+    this.duracao = const Duration(seconds: 8),
+  });
+
+  @override
+  State<KairoEnso> createState() => _KairoEnsoState();
+}
+
+class _KairoEnsoState extends State<KairoEnso>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: widget.duracao)
+      ..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cor = widget.cor ?? KC.acento;
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, _) => Transform.rotate(
+        angle: _ctrl.value * 2 * math.pi,
+        child: SizedBox(
+          width: widget.tamanho,
+          height: widget.tamanho,
+          child: CustomPaint(painter: _EnsoPainterFino(cor: cor)),
+        ),
+      ),
+    );
+  }
+}
+
+class _EnsoPainterFino extends CustomPainter {
+  final Color cor;
+  _EnsoPainterFino({required this.cor});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final raio = (size.shortestSide / 2) - size.shortestSide * 0.06;
+    // Escala de traço via raiz quadrada: fino em sizes pequenos, delicado nos grandes
+    final fator = math.sqrt(size.shortestSide / 48);
+
+    const passos = 80;
+    const inicio = -1.35; // ~-77° (abertura topo-direito)
+    const arco   = 5.60;  // ~321°
+
+    for (int i = 0; i < passos; i++) {
+      final t  = i / passos;
+      final t2 = (i + 1) / passos;
+
+      final pico    = (t < 0.3) ? (t / 0.3) : (1.0 - ((t - 0.3) / 0.7));
+      final largura = (fator * (0.6 + pico * 1.6)).clamp(0.4, 5.0);
+      final alpha   = (0.45 + pico * 0.55).clamp(0.0, 1.0);
+
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: raio),
+        inicio + arco * t,
+        arco * (t2 - t),
+        false,
+        Paint()
+          ..color      = cor.withValues(alpha: alpha)
+          ..style      = PaintingStyle.stroke
+          ..strokeWidth = largura
+          ..strokeCap  = StrokeCap.round,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_EnsoPainterFino old) => old.cor != cor;
 }

@@ -157,7 +157,7 @@ class _KairoAvatarState extends State<KairoAvatar> {
 
               if (widget.url != null) ...[
                 const SizedBox(height: 8),
-                Divider(color: KC.grafite, height: 1, thickness: 1),
+                KT.divisor(),
                 const SizedBox(height: 8),
                 _OpcaoSheet(
                   icone: Icons.delete_outline,

@@ -248,6 +248,12 @@ class T {
   static String get biblioteca => _g('Biblioteca', 'Library',   'Biblioteca','Bibliothek');
 
   // ── MENTOR (CHAT) ──────────────────────────────────────────────────────────
+  static String get mentorSubtitulo => _g(
+    'Reflexões e orientações para seu caminho',
+    'Reflections and guidance for your path',
+    'Reflexiones y orientación para tu camino',
+    'Reflexionen und Orientierung für deinen Weg',
+  );
   static String get vocelLabel => _g('VOCÊ', 'YOU', 'TÚ', 'DU');
   static String mentorSaudacao(String nome) {
     if (nome.isEmpty) {
@@ -299,6 +305,16 @@ class T {
     'últimos 7 días',
     'letzte 7 Tage',
   );
+
+  // weekday: DateTime.weekday (1=Mon … 7=Sun)
+  static String diaSemanaAbrev(int weekday) {
+    const pt = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'];
+    const en = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    const es = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+    const de = ['M', 'D', 'M', 'D', 'F', 'S', 'S'];
+    final list = switch (_l) { 'en' => en, 'es' => es, 'de' => de, _ => pt };
+    return list[(weekday - 1).clamp(0, 6)];
+  }
   static String get limite => _g('LIMITE', 'LIMIT', 'LÍMITE', 'GRENZE');
   static String get cincoPraticasLimite => _g(
     'Cinco práticas é o limite. Mais que isso é dispersão.',
@@ -389,7 +405,14 @@ class T {
   static String get manha     => _g('Manhã',    'Morning',   'Mañana', 'Morgen');
   static String get meiodia   => _g('Tarde',    'Afternoon', 'Tarde',   'Nachmittag');
   static String get noite     => _g('Noite',    'Night',     'Noche',  'Abend');
-  static String get escrever  => _g('Escrever', 'Write',     'Escribir','Schreiben');
+  static String get escrever     => _g('Escrever',       'Write',            'Escribir',        'Schreiben');
+  static String get jaRespondida => _g('Já respondida',  'Already answered',  'Ya respondida',   'Bereits beantwortet');
+  static String get novaPerguntaEmBreve => _g(
+    'Nova pergunta no próximo período',
+    'New question in the next period',
+    'Nueva pregunta en el próximo período',
+    'Neue Frage in der nächsten Periode',
+  );
   static String get reflexoesAnteriores => _g(
     'REFLEXÕES ANTERIORES',
     'PREVIOUS REFLECTIONS',
@@ -431,6 +454,7 @@ class T {
     'CARTA DEL MENTOR',
     'BRIEF DES MENTORS',
   );
+  static String get cartaNovaBadge => _g('NOVA', 'NEW', 'NUEVA', 'NEU');
   static String get cartaDomingoChegou => _g(
     'Sua carta de domingo chegou. Abra para ler.',
     'Your Sunday letter has arrived. Open to read.',
@@ -641,6 +665,21 @@ class T {
     'Sin permiso de notificaciones. Actívalo en los ajustes del teléfono.',
     'Keine Benachrichtigungsberechtigung. Aktiviere sie in den Telefoneinstellungen.',
   );
+  static String get mudarSenha => _g('Mudar senha', 'Change password', 'Cambiar contraseña', 'Passwort ändern');
+  static String get novaSenha  => _g('Nova senha',  'New password',    'Nueva contraseña',   'Neues Passwort');
+  static String get senhaMinimoCaracteres => _g(
+    'Mínimo 6 caracteres',
+    'Minimum 6 characters',
+    'Mínimo 6 caracteres',
+    'Mindestens 6 Zeichen',
+  );
+  static String get senhaAtualizada => _g(
+    'Senha atualizada',
+    'Password updated',
+    'Contraseña actualizada',
+    'Passwort aktualisiert',
+  );
+
   static String get sairConta => _g(
     'Sair da conta',
     'Sign out',
@@ -738,6 +777,30 @@ class T {
   static String get somVento    => _g('Vento',    'Wind',    'Viento',   'Wind');
   static String get somBambu    => _g('Bambu',    'Bamboo',  'Bambú',    'Bambus');
   static String get encerrar    => _g('Encerrar', 'End',     'Terminar', 'Beenden');
+  static String get dndTitulo => _g(
+    'Silêncio total',
+    'Total silence',
+    'Silencio total',
+    'Totale Stille',
+  );
+  static String get dndExplicacao => _g(
+    'O Modo Silêncio existe para criar um espaço de presença real.\n\nPara honrar esse momento por completo, o Kairo precisa ativar o Não Perturbe do seu aparelho. Durante a sessão, nenhuma notificação chegará — sem mensagens, sem chamadas, sem alertas.\n\nAo encerrar, o aparelho volta ao estado anterior automaticamente.',
+    'Silent Mode exists to create a space of real presence.\n\nTo fully honor this moment, Kairo needs to activate Do Not Disturb on your device. During the session, no notifications will arrive — no messages, no calls, no alerts.\n\nWhen the session ends, the device returns to its previous state automatically.',
+    'El Modo Silencio existe para crear un espacio de presencia real.\n\nPara honrar este momento por completo, Kairo necesita activar No Molestar en tu dispositivo. Durante la sesión, no llegará ninguna notificación — sin mensajes, sin llamadas, sin alertas.\n\nAl terminar, el dispositivo vuelve a su estado anterior automáticamente.',
+    'Der Stille-Modus existiert, um einen Raum echter Präsenz zu schaffen.\n\nUm diesen Moment vollständig zu ehren, muss Kairo Nicht stören auf deinem Gerät aktivieren. Während der Sitzung werden keine Benachrichtigungen eingehen — keine Nachrichten, keine Anrufe, keine Warnungen.\n\nWenn die Sitzung endet, kehrt das Gerät automatisch in seinen vorherigen Zustand zurück.',
+  );
+  static String get dndConceder => _g(
+    'Conceder acesso',
+    'Grant access',
+    'Conceder acceso',
+    'Zugriff gewähren',
+  );
+  static String get dndPular => _g(
+    'Continuar sem',
+    'Continue without',
+    'Continuar sin',
+    'Weiter ohne',
+  );
   static String get inspire     => _g('inspire',  'inhale',  'inhala',   'einatmen');
   static String get expire      => _g('expire',   'exhale',  'exhala',   'ausatmen');
   static String get oQueImportaAgora => _g(

@@ -4,6 +4,7 @@ import '../core/kairo_tema.dart';
 import '../core/banco.dart';
 import '../core/i18n.dart';
 import '../core/tutorial.dart';
+import '../main.dart' show jardimNovaNotifier;
 
 // (perguntas vêm de T.perguntasJardim* — i18n.dart)
 
@@ -48,6 +49,8 @@ class _TelaJardimState extends State<TelaJardim> {
             )).toList();
         _carregando = false;
       });
+      // Notifica a navbar: ponto vermelho quando pergunta não respondida
+      jardimNovaNotifier.value = !_jaRespondeuAtual;
     } catch (_) {
       if (!mounted) return;
       setState(() => _carregando = false);
@@ -92,6 +95,12 @@ class _TelaJardimState extends State<TelaJardim> {
     return banco[seed % banco.length];
   }
 
+  bool get _jaRespondeuAtual {
+    if (_carregando) return false;
+    final atual = _perguntaDoMomento();
+    return _reflexoes.any((r) => r.pergunta == atual);
+  }
+
   void _abrirEscrita() {
     HapticFeedback.lightImpact();
     final momento = _momentoAtual();
@@ -100,7 +109,7 @@ class _TelaJardimState extends State<TelaJardim> {
     Navigator.push(
       context,
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => _TelaEscrita(
+        pageBuilder: (_, _, _) => _TelaEscrita(
           momento: momento,
           pergunta: pergunta,
           aoSalvar: (resposta) async {
@@ -112,7 +121,7 @@ class _TelaJardimState extends State<TelaJardim> {
             await _carregar();
           },
         ),
-        transitionsBuilder: (_, anim, __, child) =>
+        transitionsBuilder: (_, anim, _, child) =>
             FadeTransition(opacity: anim, child: child),
         transitionDuration: const Duration(milliseconds: 400),
       ),
@@ -133,12 +142,12 @@ class _TelaJardimState extends State<TelaJardim> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 48),
-              Text(T.jardimTitulo, style: KT.displayL()),
+              KT.tituloGradiente(T.jardimTitulo),
               const SizedBox(height: 8),
               Text(T.reflexaoGuiada, style: KT.caption()),
 
               const SizedBox(height: 40),
-              Divider(color: KC.grafite, height: 1, thickness: 1),
+              KT.divisor(),
               const SizedBox(height: 32),
 
               Text(_momentoAtual().toUpperCase(), style: KT.micro(cor: KC.kin)),
@@ -148,15 +157,61 @@ class _TelaJardimState extends State<TelaJardim> {
               const SizedBox(height: 24),
 
               GestureDetector(
-                onTap: _abrirEscrita,
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: KC.grafite, width: 1),
-                    borderRadius: BorderRadius.circular(8),
+                onTap: _jaRespondeuAtual ? null : _abrirEscrita,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 300),
+                  opacity: _jaRespondeuAtual ? 0.55 : 1.0,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+                    decoration: BoxDecoration(
+                      color: KC.card,
+                      borderRadius: BorderRadius.circular(16),
+                      border: KC.escuro ? null : Border.all(color: KC.linha, width: 1),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: KC.escuro ? 0.22 : 0.07),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: Center(
+                            child: Icon(
+                              _jaRespondeuAtual
+                                  ? Icons.check_circle_outline
+                                  : Icons.edit_outlined,
+                              size: 22,
+                              color: _jaRespondeuAtual
+                                  ? KC.matcha
+                                  : KC.acento.withValues(alpha: 0.6),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 18),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _jaRespondeuAtual ? T.jaRespondida : T.escrever,
+                                style: KT.body(),
+                              ),
+                              if (_jaRespondeuAtual) ...[
+                                const SizedBox(height: 4),
+                                Text(T.novaPerguntaEmBreve, style: KT.caption()),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  child: Center(child: Text(T.escrever, style: KT.body())),
                 ),
               ),
 
@@ -215,7 +270,7 @@ class _ItemReflexao extends StatelessWidget {
           const SizedBox(height: 8),
           Text(reflexao.resposta, style: KT.bodySerif()),
           const SizedBox(height: 16),
-          Divider(color: KC.grafite, height: 1, thickness: 1),
+          KT.divisor(),
         ],
       ),
     );

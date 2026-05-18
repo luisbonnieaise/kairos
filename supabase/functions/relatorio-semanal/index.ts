@@ -46,9 +46,39 @@ STRUCTURE — you MUST respond with valid JSON containing 4 fields (all in ${lin
 WRITE NOTHING OUTSIDE THE JSON. Just the pure JSON, no code fences.`;
 }
 
-function dataString(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+// Sempre usa métodos UTC para evitar comportamento dependente do timezone do servidor.
+function dataStringUTC(d: Date): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
+
+// Adiciona N dias a uma data sem alterar o objeto original.
+function addDias(d: Date, n: number): Date {
+  const r = new Date(d);
+  r.setUTCDate(r.getUTCDate() + n);
+  return r;
+}
+
+// Calcula semana a partir de semana_inicio fornecido pelo cliente (tempo local do usuário).
+// O cliente passa "YYYY-MM-DD" calculado em seu timezone local — garantia de semana correta.
+function calcularSemanaDoCliente(semanaInicioParam: string): { dataInicio: string; dataFim: string } {
+  const inicio = new Date(`${semanaInicioParam}T12:00:00Z`); // noon UTC elimina ambiguidade de DST
+  const fim = addDias(inicio, 6);
+  return { dataInicio: dataStringUTC(inicio), dataFim: dataStringUTC(fim) };
+}
+
+// Fallback: calcula semana pelo relógio UTC do servidor (menos preciso para fusos UTC-N).
+function calcularSemanaUTC(): { dataInicio: string; dataFim: string } {
+  const hoje = new Date();
+  const diaSemana = hoje.getUTCDay(); // 0=domingo … 6=sábado
+  const fim = new Date(hoje);
+  if (diaSemana !== 0) {
+    fim.setUTCDate(hoje.getUTCDate() - diaSemana);
+  }
+  const inicio = addDias(fim, -6);
+  return { dataInicio: dataStringUTC(inicio), dataFim: dataStringUTC(fim) };
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -87,27 +117,23 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // Lê semana_inicio enviado pelo cliente (calculado em tempo local do usuário).
+    // Isso evita a dessincronização UTC vs. fuso do usuário.
+    let bodyData: { semana_inicio?: string } = {};
+    try { bodyData = await req.json(); } catch { /* corpo vazio ou não-JSON */ }
+
+    const { dataInicio, dataFim } = (
+      bodyData.semana_inicio && ISO_DATE.test(bodyData.semana_inicio)
+        ? calcularSemanaDoCliente(bodyData.semana_inicio)
+        : calcularSemanaUTC() // fallback para compatibilidade
+    );
+
     // Carrega perfil
     const { data: perfil } = await supabaseClient
       .from('profiles')
       .select()
       .eq('id', user.id)
       .maybeSingle();
-
-    // Calcula a semana da carta:
-    // semana_fim = domingo mais recente (ou hoje se hoje é domingo)
-    // semana_inicio = segunda anterior = semana_fim - 6 dias
-    const hoje = new Date();
-    const diaSemana = hoje.getDay(); // 0=domingo, 1=segunda, ... 6=sábado
-    const fim = new Date(hoje);
-    if (diaSemana !== 0) {
-      fim.setDate(hoje.getDate() - diaSemana);
-    }
-    const inicio = new Date(fim);
-    inicio.setDate(fim.getDate() - 6);
-
-    const dataInicio = dataString(inicio);
-    const dataFim    = dataString(fim);
 
     // Idempotência: se já existe carta dessa semana, retorna sem chamar Claude
     const { data: cartaExistente } = await supabaseClient
@@ -138,21 +164,23 @@ Deno.serve(async (req: Request) => {
       .gte('data', dataInicio)
       .lte('data', dataFim);
 
-    // Reflexões da semana
+    // Reflexões da semana — filtro completo início e fim para não vazar dados de outras semanas
     const { data: reflexoes } = await supabaseClient
       .from('reflexoes')
       .select('momento, pergunta, resposta, created_at')
       .eq('user_id', user.id)
       .gte('created_at', `${dataInicio}T00:00:00Z`)
+      .lte('created_at', `${dataFim}T23:59:59Z`)
       .order('created_at', { ascending: true });
 
-    // Conversas com o Mentor (mensagens do usuário) — só pra contagem
+    // Conversas com o Mentor (mensagens do usuário) — só pra contagem, também com filtro fim
     const { data: msgsUsuario } = await supabaseClient
       .from('mensagens')
       .select('id')
       .eq('user_id', user.id)
       .eq('role', 'user')
-      .gte('created_at', `${dataInicio}T00:00:00Z`);
+      .gte('created_at', `${dataInicio}T00:00:00Z`)
+      .lte('created_at', `${dataFim}T23:59:59Z`);
 
     // Monta sumário de práticas
     const praticasInfo: string[] = [];
@@ -230,7 +258,7 @@ Agora escreva a carta semanal seguindo a estrutura JSON.`;
     let relatorio: { observacoes: string; padroes: string; conquistas: string; pergunta: string };
     try {
       relatorio = JSON.parse(matchJson[0]);
-    } catch (e) {
+    } catch {
       return new Response(JSON.stringify({ error: 'JSON inválido', raw: textoCru }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

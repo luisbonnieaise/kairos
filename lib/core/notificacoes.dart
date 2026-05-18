@@ -202,4 +202,47 @@ class KairoNotificacoes {
     await _plugin.cancel(4);
     await _plugin.cancel(5);
   }
+
+  // ── MODO SILÊNCIO ─────────────────────────────────────────────────────────
+
+  /// Cancela todas as notificações do Kairo enquanto o Modo Silêncio estiver ativo.
+  /// IDs conhecidos: 1=lembrete diário, 2=carta semanal, 3-5=jardim.
+  static Future<void> suspenderTodas() async {
+    await inicializar();
+    await _plugin.cancel(1);
+    await _plugin.cancel(2);
+    await _plugin.cancel(3);
+    await _plugin.cancel(4);
+    await _plugin.cancel(5);
+  }
+
+  /// Reativa todas as notificações que estavam configuradas pelo usuário.
+  /// Deve ser chamada ao encerrar o Modo Silêncio.
+  ///
+  /// [horarioLembrete] — "HH:MM:SS" salvo no perfil; null = lembrete desativado.
+  /// [notifJardim]     — flag do perfil; true = reagendar Jardim.
+  static Future<void> restaurarTodas({
+    required String? horarioLembrete,
+    required bool notifJardim,
+  }) async {
+    await inicializar();
+
+    // Carta semanal — sempre reagendar (não tem toggle de usuário)
+    await agendarCartaSemanal();
+
+    // Jardim — só se o usuário não desativou
+    if (notifJardim) {
+      await agendarJardim();
+    }
+
+    // Lembrete diário — só se o usuário configurou um horário
+    if (horarioLembrete != null && horarioLembrete.isNotEmpty) {
+      final partes = horarioLembrete.split(':');
+      if (partes.length >= 2) {
+        final hora   = int.tryParse(partes[0]) ?? 7;
+        final minuto = int.tryParse(partes[1]) ?? 0;
+        await agendarLembreteDiario(hora, minuto);
+      }
+    }
+  }
 }

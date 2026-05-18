@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/kairo_tema.dart';
@@ -5,6 +7,7 @@ import '../core/banco.dart';
 import '../core/i18n.dart';
 import '../core/tutorial.dart';
 import '../widgets/kairo_avatar.dart';
+import '../main.dart' show cartaNovaNotifier, jardimNovaNotifier;
 import 'mentor.dart';
 import 'dojo.dart';
 import 'jardim.dart';
@@ -32,12 +35,17 @@ class _TelaHomeState extends State<TelaHome> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomPad = MediaQuery.of(context).padding.bottom;
     return Scaffold(
       backgroundColor: KC.sumi,
+      extendBody: true,
       body: _telas[_aba],
-      bottomNavigationBar: _NavBar(
-        selecionado: _aba,
-        aoSelecionar: (i) => setState(() => _aba = i),
+      bottomNavigationBar: Padding(
+        padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPad + 12),
+        child: _NavBar(
+          selecionado: _aba,
+          aoSelecionar: (i) => setState(() => _aba = i),
+        ),
       ),
     );
   }
@@ -53,21 +61,67 @@ class _NavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Sombra fora do clip para não ser cortada
     return Container(
-      // Mesmo fundo da tela — ícones parecem flutuar
-      color: KC.fundo,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.only(top: 8, bottom: 4),
-          child: Row(
-            children: [
-              _ItemNav(icone: Icons.home_outlined,              label: T.inicio,     index: 0, selecionado: selecionado, aoTocar: aoSelecionar),
-              _ItemNav(icone: Icons.chat_bubble_outline,        label: T.mentor,     index: 1, selecionado: selecionado, aoTocar: aoSelecionar),
-              _ItemNav(icone: Icons.self_improvement_outlined,  label: T.dojo,       index: 2, selecionado: selecionado, aoTocar: aoSelecionar),
-              _ItemNav(icone: Icons.eco_outlined,               label: T.jardim,     index: 3, selecionado: selecionado, aoTocar: aoSelecionar),
-              _ItemNav(icone: Icons.menu_book_outlined,         label: T.biblioteca, index: 4, selecionado: selecionado, aoTocar: aoSelecionar),
-            ],
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: KC.escuro ? 0.30 : 0.10),
+            blurRadius: 24,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            decoration: BoxDecoration(
+              color: KC.escuro
+                  ? Colors.black.withValues(alpha: 0.45)
+                  : Colors.white.withValues(alpha: 0.62),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: KC.escuro
+                    ? Colors.white.withValues(alpha: 0.08)
+                    : Colors.black.withValues(alpha: 0.06),
+                width: 0.5,
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              child: Row(
+                children: [
+                  _ItemNav(icone: Icons.home_outlined,             label: T.inicio,     index: 0, selecionado: selecionado, aoTocar: aoSelecionar),
+                  _ItemNav(icone: Icons.chat_bubble_outline,       label: T.mentor,     index: 1, selecionado: selecionado, aoTocar: aoSelecionar),
+                  _ItemNav(icone: Icons.self_improvement_outlined, label: T.dojo,       index: 2, selecionado: selecionado, aoTocar: aoSelecionar),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: jardimNovaNotifier,
+                    builder: (_, temNova, _) => _ItemNav(
+                      icone: Icons.eco_outlined,
+                      label: T.jardim,
+                      index: 3,
+                      selecionado: selecionado,
+                      aoTocar: aoSelecionar,
+                      notificacao: temNova,
+                    ),
+                  ),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: cartaNovaNotifier,
+                    builder: (_, temNova, _) => _ItemNav(
+                      icone: Icons.menu_book_outlined,
+                      label: T.biblioteca,
+                      index: 4,
+                      selecionado: selecionado,
+                      aoTocar: aoSelecionar,
+                      notificacao: temNova,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -81,6 +135,7 @@ class _ItemNav extends StatelessWidget {
   final int index;
   final int selecionado;
   final ValueChanged<int> aoTocar;
+  final bool notificacao;
 
   const _ItemNav({
     required this.icone,
@@ -88,6 +143,7 @@ class _ItemNav extends StatelessWidget {
     required this.index,
     required this.selecionado,
     required this.aoTocar,
+    this.notificacao = false,
   });
 
   @override
@@ -103,7 +159,6 @@ class _ItemNav extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Indicador de aba selecionada — linha curta de cobre ACIMA do ícone
               AnimatedContainer(
                 duration: const Duration(milliseconds: 280),
                 curve: Curves.easeInOutCubic,
@@ -112,12 +167,27 @@ class _ItemNav extends StatelessWidget {
                 color: KC.acento,
               ),
               const SizedBox(height: 6),
-              Icon(icone, size: 20, color: cor),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: KT.tabLabel(cor: cor),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(icone, size: 20, color: cor),
+                  if (notificacao)
+                    Positioned(
+                      top: -2,
+                      right: -5,
+                      child: Container(
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFE53935),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                ],
               ),
+              const SizedBox(height: 4),
+              Text(label, style: KT.tabLabel(cor: cor)),
             ],
           ),
         ),
@@ -188,28 +258,29 @@ class _AbaPatioState extends State<_AbaPatio> {
     return T.boaNoite;
   }
 
-  // Dark → cinza elegante. Light → gradiente cobre diagonal.
-  Widget _buildSaudacao() {
-    final texto = _saudacao();
-    if (KC.escuro) {
-      return Text(
-        texto,
-        style: KT.displayL(cor: KC.textoSuave),
+  Widget _buildCabecalhoTexto() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Saudação como sobrescrito discreto — dá contexto sem competir
+          Text(
+            _saudacao().toUpperCase(),
+            style: KT.micro(),
+          ),
+          const SizedBox(height: 3),
+          // Nome do usuário — elemento focal, com o degradê de assinatura
+          KT.tituloGradiente(
+            _nomeUsuario.isEmpty ? T.bemVindo : _nomeUsuario,
+            estilo: KT.titulo().copyWith(
+              fontSize: 22,
+              fontWeight: FontWeight.w600,
+              height: 1.1,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       );
-    }
-    return ShaderMask(
-      shaderCallback: (bounds) => LinearGradient(
-        colors: const [Color(0xFF8C5A30), Color(0xFFC28B63)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ).createShader(bounds),
-      blendMode: BlendMode.srcIn,
-      child: Text(
-        texto,
-        style: KT.displayL(cor: Colors.white),
-      ),
-    );
-  }
 
   Future<void> _marcarHabito(int index) async {
     HapticFeedback.mediumImpact();
@@ -237,13 +308,22 @@ class _AbaPatioState extends State<_AbaPatio> {
     final concluidos = _habitos.where((h) => h.feito).length;
     final total = _habitos.length;
 
+    // viewPadding.bottom = safe area físico (não afetado pelo extendBody)
+    // 100 = altura da navbar (~64) + gap (12) + folga (24)
+    final navBarClearance = MediaQuery.of(context).viewPadding.bottom + 100;
+
     return RefreshIndicator(
       color: KC.acento,
       backgroundColor: KC.fundo,
       onRefresh: _carregar,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
+        padding: EdgeInsets.fromLTRB(
+          24,
+          MediaQuery.of(context).padding.top + 24,
+          24,
+          navBarClearance,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -258,8 +338,8 @@ class _AbaPatioState extends State<_AbaPatio> {
                     await Navigator.push(
                       context,
                       PageRouteBuilder(
-                        pageBuilder: (_, __, ___) => const TelaPerfil(),
-                        transitionsBuilder: (_, anim, __, child) =>
+                        pageBuilder: (_, _, _) => const TelaPerfil(),
+                        transitionsBuilder: (_, anim, _, child) =>
                             FadeTransition(opacity: anim, child: child),
                         transitionDuration: const Duration(milliseconds: 320),
                       ),
@@ -267,35 +347,21 @@ class _AbaPatioState extends State<_AbaPatio> {
                     if (mounted) await _carregar();
                   },
                   child: KairoAvatar(
-                    tamanho: 52,
+                    tamanho: 48,
                     url: _avatarUrl,
                     nome: _nomeUsuario,
                     editavel: false,
                   ),
                 ),
 
-                const SizedBox(width: 18),
+                const SizedBox(width: 16),
 
                 // Saudação + nome
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildSaudacao(),
-                      const SizedBox(height: 2),
-                      Text(
-                        _nomeUsuario.isEmpty ? T.bemVindo : _nomeUsuario,
-                        style: KT.displayL(),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
+                Expanded(child: _buildCabecalhoTexto()),
               ],
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
 
             // Frase do Mentor — italic com aspas, cor secundária
             Text(
@@ -303,18 +369,16 @@ class _AbaPatioState extends State<_AbaPatio> {
               style: KT.bodyItalic(),
             ),
 
-            const SizedBox(height: 60),
+            const SizedBox(height: 32),
+            KT.divisor(),
+            const SizedBox(height: 24),
 
             // ── Seção Práticas ───────────────────────────────────────────
             Text(T.praticasDeHoje, style: KT.titulo()),
             const SizedBox(height: 6),
-            Text(
-              _habitos.isEmpty
-                  ? T.nenhumaPraticaAtiva
-                  : 'Hábitos limitados (até 5)',
-              style: KT.caption(cor: KC.textoSuave),
-            ),
-            const SizedBox(height: 24),
+            if (_habitos.isEmpty)
+              Text(T.nenhumaPraticaAtiva, style: KT.caption(cor: KC.textoSuave)),
+            const SizedBox(height: 20),
 
             if (_carregando)
               Padding(
@@ -330,7 +394,7 @@ class _AbaPatioState extends State<_AbaPatio> {
               }),
 
             if (_habitos.isNotEmpty) ...[
-              const SizedBox(height: 32),
+              const SizedBox(height: 20),
 
               // Barra de progresso ultra-fina (2px) + indicador numérico
               Row(
@@ -359,7 +423,9 @@ class _AbaPatioState extends State<_AbaPatio> {
               ),
             ],
 
-            const SizedBox(height: 80),
+            const SizedBox(height: 32),
+            KT.divisor(),
+            const SizedBox(height: 24),
 
             // ── Card Modo Silêncio ────────────────────────────────────────
             GestureDetector(
@@ -368,8 +434,8 @@ class _AbaPatioState extends State<_AbaPatio> {
                 Navigator.push(
                   context,
                   PageRouteBuilder(
-                    pageBuilder: (_, __, ___) => const TelaSilencioSelecao(),
-                    transitionsBuilder: (_, anim, __, child) =>
+                    pageBuilder: (_, _, _) => const TelaSilencioSelecao(),
+                    transitionsBuilder: (_, anim, _, child) =>
                         FadeTransition(opacity: anim, child: child),
                     transitionDuration: const Duration(milliseconds: 320),
                   ),
@@ -381,17 +447,18 @@ class _AbaPatioState extends State<_AbaPatio> {
                 decoration: BoxDecoration(
                   color: KC.card,
                   borderRadius: BorderRadius.circular(16),
+                  border: KC.escuro ? null : Border.all(color: KC.linha, width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: KC.escuro ? 0.22 : 0.07),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: Row(
                   children: [
-                    // Ensō (círculo zen) na esquerda — pincelada imperfeita
-                    SizedBox(
-                      width: 48,
-                      height: 48,
-                      child: CustomPaint(
-                        painter: _EnsoPainter(cor: KC.acento.withValues(alpha: 0.6)),
-                      ),
-                    ),
+                    KairoEnso(tamanho: 48, cor: KC.acento.withValues(alpha: 0.6)),
                     const SizedBox(width: 18),
                     Expanded(
                       child: Column(
@@ -410,8 +477,6 @@ class _AbaPatioState extends State<_AbaPatio> {
                 ),
               ),
             ),
-
-            const SizedBox(height: 24),
           ],
         ),
       ),
@@ -419,53 +484,7 @@ class _AbaPatioState extends State<_AbaPatio> {
   }
 }
 
-// Painter do ensō — círculo zen com pincelada de caligrafia.
-// Stroke grosso no início (entrada do pincel), mais fino nas pontas,
-// com variação de opacidade para autenticidade. Abertura no topo-direito.
-class _EnsoPainter extends CustomPainter {
-  final Color cor;
-  _EnsoPainter({required this.cor});
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = size.center(Offset.zero);
-    final raio = (size.shortestSide / 2) - 4;
-
-    const passos = 120;
-    const inicio = -1.35;   // ~-77° (topo-direito)
-    const arco = 5.60;       // ~321° — deixa ~7% aberto
-
-    for (int i = 0; i < passos; i++) {
-      final t = i / passos;
-      final t2 = (i + 1) / passos;
-
-      // Perfil de peso: atinge pico em ~30% e afina suavemente até o fim.
-      // Isso imita a entrada rápida de um pincel plano e a saída em ponta.
-      final pico = (t < 0.3) ? (t / 0.3) : (1.0 - ((t - 0.3) / 0.7));
-      final largura = 2.0 + pico * 5.5;
-
-      // Opacidade levemente variável: mais densa no centro da pincelada
-      final alpha = (0.65 + pico * 0.35).clamp(0.0, 1.0);
-
-      final paint = Paint()
-        ..color = cor.withValues(alpha: alpha)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = largura
-        ..strokeCap = StrokeCap.round;
-
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: raio),
-        inicio + arco * t,
-        arco * (t2 - t),
-        false,
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_EnsoPainter old) => old.cor != cor;
-}
 
 // ── PEDRA DE HÁBITO ───────────────────────────────────────────────────────────
 

@@ -1,10 +1,11 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/kairo_tema.dart';
 import '../core/audio.dart';
+import '../core/banco.dart';
 import '../core/i18n.dart';
+import '../core/notificacoes.dart';
 import '../core/tutorial.dart';
 
 // ── TELA DE SELEÇÃO DO MODO SILÊNCIO ────────────────────────────────────────
@@ -51,16 +52,28 @@ class _TelaSilencioSelecaoState extends State<TelaSilencioSelecao> {
     Navigator.pushReplacement(
       context,
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => TelaSilencio(
+        pageBuilder: (_, _, _) => TelaSilencio(
           tipo: tipo,
           minutos: minutos,
           somAmbiente: som,
         ),
-        transitionsBuilder: (_, anim, __, child) =>
+        transitionsBuilder: (_, anim, _, child) =>
             FadeTransition(opacity: anim, child: child),
         transitionDuration: const Duration(milliseconds: 800),
       ),
     );
+  }
+
+  /// Inicia o modo silêncio.
+  /// (Bloqueio de notificações do sistema desabilitado temporariamente —
+  /// pacote flutter_dnd era incompatível com Flutter atual.)
+  Future<void> _verificarDndEIniciar(
+    BuildContext context,
+    TipoSilencio tipo,
+    int minutos,
+    String? som,
+  ) async {
+    if (context.mounted) _iniciar(context, tipo, minutos, som);
   }
 
   @override
@@ -88,33 +101,37 @@ class _TelaSilencioSelecaoState extends State<TelaSilencioSelecao> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const SizedBox(height: 16),
-                    Text(T.modoSilencioTitulo, style: KT.displayL()),
+                    KT.tituloGradiente(T.modoSilencioTitulo),
                     const SizedBox(height: 8),
                     Text(T.pausaFocoPresenca, style: KT.caption()),
 
                     const SizedBox(height: 48),
-                    Divider(color: KC.grafite, height: 1, thickness: 1),
+                    KT.divisor(),
                     const SizedBox(height: 32),
 
                     Text(T.variante, style: KT.micro()),
                     const SizedBox(height: 16),
 
                     _OpcaoSilencio(
+                      icone: Icons.adjust,
                       titulo: T.focoProfundo,
                       descricao: T.focoProfundoDesc,
                       aoTocar: () => _mostrarDuracoes(context, TipoSilencio.focoProfundo),
                     ),
                     _OpcaoSilencio(
+                      icone: Icons.self_improvement,
                       titulo: T.meditacao,
                       descricao: T.meditacaoDesc,
                       aoTocar: () => _mostrarDuracoes(context, TipoSilencio.meditacao),
                     ),
                     _OpcaoSilencio(
+                      icone: Icons.hourglass_empty,
                       titulo: T.pausaEstrategica,
                       descricao: T.pausaEstrategicaDesc,
                       aoTocar: () => _mostrarSons(context, TipoSilencio.pausaEstrategica, 10),
                     ),
                     _OpcaoSilencio(
+                      icone: Icons.air,
                       titulo: T.resetEmocional,
                       descricao: T.resetEmocionalDesc,
                       aoTocar: () => _mostrarSons(context, TipoSilencio.resetEmocional, 4),
@@ -221,7 +238,7 @@ class _TelaSilencioSelecaoState extends State<TelaSilencioSelecao> {
                   som: s,
                   aoTocar: () {
                     Navigator.pop(ctx);
-                    _iniciar(context, tipo, minutos, s.arquivo);
+                    _verificarDndEIniciar(context, tipo, minutos, s.arquivo);
                   },
                 ),
             ],
@@ -263,11 +280,13 @@ class _ItemSom extends StatelessWidget {
 }
 
 class _OpcaoSilencio extends StatelessWidget {
+  final IconData icone;
   final String titulo;
   final String descricao;
   final VoidCallback aoTocar;
 
   const _OpcaoSilencio({
+    required this.icone,
     required this.titulo,
     required this.descricao,
     required this.aoTocar,
@@ -278,16 +297,33 @@ class _OpcaoSilencio extends StatelessWidget {
     return GestureDetector(
       onTap: aoTocar,
       behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(titulo, style: KT.body()),
-            const SizedBox(height: 4),
-            Text(descricao, style: KT.caption(cor: KC.fumo)),
-          ],
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 18),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 40,
+                  child: Icon(icone, size: 22, color: KC.acento.withValues(alpha: 0.65)),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(titulo, style: KT.body()),
+                      const SizedBox(height: 4),
+                      Text(descricao, style: KT.caption(cor: KC.fumo)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          KT.divisor(),
+        ],
       ),
     );
   }
@@ -358,7 +394,11 @@ class _TelaSilencioState extends State<TelaSilencio>
   bool _encerrando = false;
   bool _inspirando = true;
 
-  late AnimationController _ensoCtrl;
+  // Dados do perfil carregados no início da sessão para restaurar notificações
+  String? _horarioLembrete;
+  bool _notifJardim = true;
+  bool _notificacoesSuspensas = false;
+
   late AnimationController _respiracaoCtrl;
 
   @override
@@ -366,18 +406,10 @@ class _TelaSilencioState extends State<TelaSilencio>
     super.initState();
     _inicio = DateTime.now();
 
-    _ensoCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 8),
-    )..repeat();
-
-    // Padrão 4-6 (4s inspira, 6s expira) — exalação estendida ativa o
-    // parassimpático e induz estado de calma. Baseado em pesquisa de
-    // respiração ressonante / vagal.
     _respiracaoCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 4),         // inspira
-      reverseDuration: const Duration(seconds: 6),  // expira
+      duration: const Duration(seconds: 4),
+      reverseDuration: const Duration(seconds: 6),
     );
     _respiracaoCtrl.addStatusListener((status) {
       if (!mounted) return;
@@ -389,7 +421,6 @@ class _TelaSilencioState extends State<TelaSilencio>
     });
     _respiracaoCtrl.repeat(reverse: true);
 
-    // Toca som ambiente em loop (se selecionado)
     if (widget.somAmbiente != null) {
       Future.delayed(const Duration(milliseconds: 600), () {
         if (!mounted) return;
@@ -397,11 +428,47 @@ class _TelaSilencioState extends State<TelaSilencio>
       });
     }
 
-    // Timer pra encerrar automaticamente
     _timer = Timer(Duration(minutes: widget.minutos), _encerrar);
 
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
+
+    // Suspende notificações e ativa Não Perturbe imediatamente
+    _suspenderNotificacoes();
+    _configurarDnd();
   }
+
+  /// Cancela todas as notificações e guarda os parâmetros de restauração.
+  /// A suspensão acontece antes do carregamento do perfil para garantir
+  /// que nenhuma notificação dispare durante a sessão.
+  Future<void> _suspenderNotificacoes() async {
+    await KairoNotificacoes.suspenderTodas();
+    _notificacoesSuspensas = true;
+
+    try {
+      final perfil = await BancoPerfil.carregar();
+      _horarioLembrete = perfil?['horario_lembrete'] as String?;
+      _notifJardim = (perfil?['notif_jardim'] as bool?) ?? true;
+    } catch (_) {
+      // Perfil indisponível (offline) — restaura com valores padrão
+    }
+  }
+
+  /// Reativa todas as notificações que estavam configuradas.
+  Future<void> _restaurarNotificacoes() async {
+    if (!_notificacoesSuspensas) return;
+    _notificacoesSuspensas = false;
+    await KairoNotificacoes.restaurarTodas(
+      horarioLembrete: _horarioLembrete,
+      notifJardim: _notifJardim,
+    );
+  }
+
+  /// Stub — bloqueio de notificações do sistema desabilitado.
+  /// (Pacote flutter_dnd era incompatível com Flutter atual.)
+  Future<void> _configurarDnd() async {}
+
+  /// Stub — bloqueio de notificações do sistema desabilitado.
+  Future<void> _restaurarDnd() async {}
 
   Future<void> _encerrar() async {
     if (_encerrando) return;
@@ -409,6 +476,11 @@ class _TelaSilencioState extends State<TelaSilencio>
 
     _timer?.cancel();
     await KairoAudio.pararAmbiente();
+
+    // Restaura Não Perturbe e notificações antes de sair da sessão
+    await _restaurarDnd();
+    await _restaurarNotificacoes();
+
     HapticFeedback.mediumImpact();
 
     final duracao = DateTime.now().difference(_inicio);
@@ -417,11 +489,11 @@ class _TelaSilencioState extends State<TelaSilencio>
     Navigator.pushReplacement(
       context,
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => _TelaFim(
+        pageBuilder: (_, _, _) => _TelaFim(
           tipo: widget.tituloTraduzido,
           duracao: duracao,
         ),
-        transitionsBuilder: (_, anim, __, child) =>
+        transitionsBuilder: (_, anim, _, child) =>
             FadeTransition(opacity: anim, child: child),
         transitionDuration: const Duration(milliseconds: 1200),
       ),
@@ -432,9 +504,17 @@ class _TelaSilencioState extends State<TelaSilencio>
   void dispose() {
     _timer?.cancel();
     KairoAudio.pararAmbiente();
-    _ensoCtrl.dispose();
     _respiracaoCtrl.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    // Safety net: se o widget morreu sem passar por _encerrar (ex: sistema
+    // forçou fechamento), garante que notificações não ficam suspensas.
+    if (_notificacoesSuspensas) {
+      _notificacoesSuspensas = false;
+      KairoNotificacoes.restaurarTodas(
+        horarioLembrete: _horarioLembrete,
+        notifJardim: _notifJardim,
+      );
+    }
     super.dispose();
   }
 
@@ -468,7 +548,7 @@ class _TelaSilencioState extends State<TelaSilencio>
                 if (ehReset)
                   _CirculoRespiracao(controller: _respiracaoCtrl)
                 else
-                  _EnsoGirando(controller: _ensoCtrl),
+                  KairoEnso(tamanho: 120),
 
                 if (ehReset) ...[
                   const SizedBox(height: 48),
@@ -482,19 +562,33 @@ class _TelaSilencioState extends State<TelaSilencio>
 
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 48),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: _encerrar,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: KC.washi,
-                        side: BorderSide(color: KC.grafite, width: 1),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: KC.card,
+                      borderRadius: BorderRadius.circular(8),
+                      border: KC.escuro ? null : Border.all(color: KC.linha, width: 1),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: KC.escuro ? 0.22 : 0.07),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
                         ),
+                      ],
+                    ),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: _encerrar,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: KC.washi,
+                          side: BorderSide.none,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: Text(T.encerrar, style: KT.body()),
                       ),
-                      child: Text(T.encerrar, style: KT.body()),
                     ),
                   ),
                 ),
@@ -509,54 +603,6 @@ class _TelaSilencioState extends State<TelaSilencio>
   }
 }
 
-// ── ENSŌ GIRANDO LENTAMENTE ──────────────────────────────────────────────────
-
-class _EnsoGirando extends StatelessWidget {
-  final AnimationController controller;
-  const _EnsoGirando({required this.controller});
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (_, __) {
-        return Transform.rotate(
-          angle: controller.value * 2 * math.pi,
-          child: SizedBox(
-            width: 120,
-            height: 120,
-            child: CustomPaint(
-              painter: _EnsoPainter(),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _EnsoPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = KC.kin
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5
-      ..strokeCap = StrokeCap.round;
-
-    final rect = Offset.zero & size;
-    canvas.drawArc(
-      rect.deflate(2),
-      -math.pi / 2,
-      2 * math.pi * 0.92, // ensō aberto (8% de abertura)
-      false,
-      paint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_) => false;
-}
 
 // ── CÍRCULO DE RESPIRAÇÃO ────────────────────────────────────────────────────
 
@@ -568,7 +614,7 @@ class _CirculoRespiracao extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: controller,
-      builder: (_, __) {
+      builder: (_, _) {
         final t = Curves.easeInOut.transform(controller.value);
         final raio = 60.0 + t * 60.0; // 60 a 120
 
@@ -616,14 +662,7 @@ class _TelaFim extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: KC.kin, width: 1.5),
-                ),
-              ),
+              KairoEnso(tamanho: 56, cor: KC.acento),
               const SizedBox(height: 32),
 
               Text(_formatarDuracao().toUpperCase(), style: KT.micro(cor: KC.kin)),
@@ -635,19 +674,33 @@ class _TelaFim extends StatelessWidget {
 
               const SizedBox(height: 64),
 
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: KC.washi,
-                    side: BorderSide(color: KC.grafite, width: 1),
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+              Container(
+                decoration: BoxDecoration(
+                  color: KC.card,
+                  borderRadius: BorderRadius.circular(8),
+                  border: KC.escuro ? null : Border.all(color: KC.linha, width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: KC.escuro ? 0.22 : 0.07),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
                     ),
+                  ],
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: KC.washi,
+                      side: BorderSide.none,
+                      padding: const EdgeInsets.symmetric(vertical: 18),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Text(T.voltar, style: KT.body()),
                   ),
-                  child: Text(T.voltar, style: KT.body()),
                 ),
               ),
             ],

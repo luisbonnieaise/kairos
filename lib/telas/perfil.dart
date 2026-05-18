@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/kairo_tema.dart';
 import '../core/banco.dart';
 import '../core/notificacoes.dart';
@@ -69,6 +70,29 @@ class _TelaPerfilState extends State<TelaPerfil> {
         aoSalvar: (texto) async {
           await aoSalvar(texto);
           await _carregar();
+        },
+      ),
+    );
+  }
+
+  void _mudarSenha() {
+    HapticFeedback.lightImpact();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: KC.sumi,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _SheetMudarSenha(
+        aoSalvar: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: KC.grafite,
+              content: Text(T.senhaAtualizada, style: KT.caption(cor: KC.washi)),
+              duration: const Duration(seconds: 2),
+            ),
+          );
         },
       ),
     );
@@ -379,9 +403,18 @@ class _TelaPerfilState extends State<TelaPerfil> {
                     Text(T.conta, style: KT.micro()),
                     const SizedBox(height: 12),
                     Text(email, style: KT.body()),
+                    const SizedBox(height: 16),
+                    GestureDetector(
+                      onTap: _mudarSenha,
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Text(T.mudarSenha, style: KT.caption(cor: KC.acento)),
+                      ),
+                    ),
 
                     const SizedBox(height: 40),
-                    Divider(color: KC.grafite, height: 1, thickness: 1),
+                    KT.divisor(),
                     const SizedBox(height: 32),
 
                     Text(T.identidadeLabel, style: KT.micro()),
@@ -442,7 +475,7 @@ class _TelaPerfilState extends State<TelaPerfil> {
                     ],
 
                     const SizedBox(height: 48),
-                    Divider(color: KC.grafite, height: 1, thickness: 1),
+                    KT.divisor(),
                     const SizedBox(height: 32),
 
                     // Tema (claro/escuro)
@@ -451,7 +484,7 @@ class _TelaPerfilState extends State<TelaPerfil> {
                     _TemaRow(),
 
                     const SizedBox(height: 48),
-                    Divider(color: KC.linha, height: 1, thickness: 1),
+                    KT.divisor(),
                     const SizedBox(height: 32),
 
                     // Idioma
@@ -482,7 +515,7 @@ class _TelaPerfilState extends State<TelaPerfil> {
                     ),
 
                     const SizedBox(height: 48),
-                    Divider(color: KC.grafite, height: 1, thickness: 1),
+                    KT.divisor(),
                     const SizedBox(height: 32),
 
                     // Lembrete diário
@@ -498,7 +531,7 @@ class _TelaPerfilState extends State<TelaPerfil> {
                       ),
 
                     const SizedBox(height: 48),
-                    Divider(color: KC.grafite, height: 1, thickness: 1),
+                    KT.divisor(),
                     const SizedBox(height: 32),
 
                     // Notificações do Jardim
@@ -513,7 +546,7 @@ class _TelaPerfilState extends State<TelaPerfil> {
                       ),
 
                     const SizedBox(height: 48),
-                    Divider(color: KC.grafite, height: 1, thickness: 1),
+                    KT.divisor(),
                     const SizedBox(height: 32),
 
                     // Tutoriais (rever)
@@ -577,7 +610,7 @@ class _TelaPerfilState extends State<TelaPerfil> {
                     ),
 
                     const SizedBox(height: 48),
-                    Divider(color: KC.grafite, height: 1, thickness: 1),
+                    KT.divisor(),
                     const SizedBox(height: 32),
 
                     // Sair
@@ -968,6 +1001,161 @@ class _SheetEditarState extends State<_SheetEditar> {
                           strokeWidth: 1.5,
                           color: KC.fundo,
                         ),
+                      )
+                    : Text(T.salvar, style: KT.body(cor: KC.fundo)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── SHEET DE MUDAR SENHA ──────────────────────────────────────────────────────
+
+class _SheetMudarSenha extends StatefulWidget {
+  final VoidCallback aoSalvar;
+  const _SheetMudarSenha({required this.aoSalvar});
+
+  @override
+  State<_SheetMudarSenha> createState() => _SheetMudarSenhaState();
+}
+
+class _SheetMudarSenhaState extends State<_SheetMudarSenha> {
+  final _novaSenhaCtrl = TextEditingController();
+  final _confirmarCtrl = TextEditingController();
+  bool _verNova        = false;
+  bool _verConfirmar   = false;
+  bool _salvando       = false;
+  String? _erro;
+
+  @override
+  void dispose() {
+    _novaSenhaCtrl.dispose();
+    _confirmarCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _salvar() async {
+    final nova      = _novaSenhaCtrl.text.trim();
+    final confirmar = _confirmarCtrl.text.trim();
+
+    if (nova.length < 6) {
+      setState(() => _erro = T.senhaMinimoCaracteres);
+      return;
+    }
+    if (nova != confirmar) {
+      setState(() => _erro = T.senhasNaoCoincidem);
+      return;
+    }
+
+    setState(() { _salvando = true; _erro = null; });
+
+    try {
+      await supabase.auth.updateUser(UserAttributes(password: nova));
+      if (mounted) {
+        Navigator.pop(context);
+        widget.aoSalvar();
+      }
+    } catch (_) {
+      if (mounted) setState(() { _salvando = false; _erro = T.erroGenerico; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 32,
+          right: 32,
+          top: 24,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 32,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 32, height: 3,
+                decoration: BoxDecoration(color: KC.grafite, borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            const SizedBox(height: 32),
+            Text(T.mudarSenha, style: KT.titulo()),
+            const SizedBox(height: 24),
+
+            TextField(
+              controller: _novaSenhaCtrl,
+              obscureText: !_verNova,
+              style: KT.bodySerif(),
+              cursorColor: KC.acento,
+              cursorWidth: 1,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: T.novaSenha,
+                labelStyle: KT.caption(),
+                border: UnderlineInputBorder(borderSide: BorderSide(color: KC.grafite, width: 1)),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: KC.grafite, width: 1)),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: KC.cinza, width: 1)),
+                suffixIcon: GestureDetector(
+                  onTap: () => setState(() => _verNova = !_verNova),
+                  child: Icon(
+                    _verNova ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                    size: 18, color: KC.fumo,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            TextField(
+              controller: _confirmarCtrl,
+              obscureText: !_verConfirmar,
+              style: KT.bodySerif(),
+              cursorColor: KC.acento,
+              cursorWidth: 1,
+              onSubmitted: (_) => _salvar(),
+              decoration: InputDecoration(
+                labelText: T.confirmarSenha,
+                labelStyle: KT.caption(),
+                border: UnderlineInputBorder(borderSide: BorderSide(color: KC.grafite, width: 1)),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: KC.grafite, width: 1)),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: KC.cinza, width: 1)),
+                suffixIcon: GestureDetector(
+                  onTap: () => setState(() => _verConfirmar = !_verConfirmar),
+                  child: Icon(
+                    _verConfirmar ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                    size: 18, color: KC.fumo,
+                  ),
+                ),
+              ),
+            ),
+
+            if (_erro != null) ...[
+              const SizedBox(height: 16),
+              Text(_erro!, style: KT.caption(cor: KC.aka)),
+            ],
+
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _salvando ? null : _salvar,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: KC.washi,
+                  foregroundColor: KC.sumi,
+                  disabledBackgroundColor: KC.grafite,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: _salvando
+                    ? SizedBox(
+                        width: 18, height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 1.5, color: KC.fundo),
                       )
                     : Text(T.salvar, style: KT.body(cor: KC.fundo)),
               ),

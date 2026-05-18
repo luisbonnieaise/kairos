@@ -1,0 +1,57 @@
+workflows:
+  ios-testflight:
+    name: Kairo iOS - TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      # Nome da chave da App Store Connect API cadastrada em
+      # Codemagic > Teams > Integrations > App Store Connect.
+      app_store_connect: kairo_asc_key
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.kairo.app
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      groups:
+        # Grupo de variaveis criado em Codemagic > Environment variables.
+        # Deve conter SUPABASE_URL e SUPABASE_KEY (recriam o .env no build).
+        - kairo_env
+      vars:
+        APP_STORE_APP_ID: 0000000000 # opcional: ID numerico do app na App Store Connect
+    scripts:
+      - name: Recriar arquivo .env (asset exigido pelo app)
+        script: |
+          cat > "$CM_BUILD_DIR/.env" <<EOF
+          SUPABASE_URL=$SUPABASE_URL
+          SUPABASE_KEY=$SUPABASE_KEY
+          EOF
+      - name: flutter pub get
+        script: flutter pub get
+      - name: Instalar CocoaPods
+        script: |
+          find . -name "Podfile" -execdir pod install \;
+      - name: Aplicar perfis de assinatura
+        script: xcode-project use-profiles
+      - name: Build IPA (release)
+        script: |
+          flutter build ipa --release \
+            --build-name=1.0.0 \
+            --build-number=$(($(date +%s) / 60)) \
+            --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_drive.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        # Beta testers internos recebem automaticamente apos o processamento.
+      email:
+        recipients:
+          - realpedroluizchagas@gmail.com
+        notify:
+          success: true
+          failure: true

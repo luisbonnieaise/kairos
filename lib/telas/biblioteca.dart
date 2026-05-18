@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/kairo_tema.dart';
 import '../core/banco.dart';
@@ -18,7 +19,10 @@ class TelaBiblioteca extends StatefulWidget {
 class _TelaBibliotecaState extends State<TelaBiblioteca> {
   bool _carregando = true;
   bool _gerandoCarta = false;
+  bool _temCartaNova = false;
   String? _erroCarta;
+
+  static const _prefKeyCartaLida = 'carta_ultima_lida';
 
   int _completadasSemana = 0;
   int _totalReflexoes = 0;
@@ -44,9 +48,14 @@ class _TelaBibliotecaState extends State<TelaBiblioteca> {
 
   bool _ehHoraDeNovaCarta() {
     final agora = DateTime.now();
-    // Domingo após 21:00 ou qualquer dia da semana até sábado
+    // Domingo local após 21:00 — janela primária de geração
     if (agora.weekday == DateTime.sunday && agora.hour >= 21) return true;
-    if (agora.weekday >= DateTime.monday && agora.weekday <= DateTime.saturday) return true;
+    // Segunda a sexta — fallback caso o usuário não tenha aberto no domingo
+    if (agora.weekday >= DateTime.monday && agora.weekday <= DateTime.friday) return true;
+    // Sábado: só permite se já passaram pelo menos 21h desde o domingo anterior,
+    // ou seja, a semana anterior está completamente encerrada (hora local >= 21
+    // não se aplica ao sábado — sábado pertence à semana em andamento até domingo).
+    // Sábado é excluído para evitar que a carta seja gerada com a semana incompleta.
     return false;
   }
 
@@ -161,6 +170,12 @@ class _TelaBibliotecaState extends State<TelaBiblioteca> {
       }
       final diasIngresso = agora.difference(criadoEm).inDays;
 
+      // Detecta carta nova (não lida)
+      final prefs = await SharedPreferences.getInstance();
+      final ultimaLida = prefs.getString(_prefKeyCartaLida) ?? '';
+      final temNova = cartas.isNotEmpty &&
+          (cartas.first['semana_inicio'] as String? ?? '') != ultimaLida;
+
       if (!mounted) return;
       setState(() {
         _completadasSemana = totalCompletadasSemana;
@@ -169,8 +184,10 @@ class _TelaBibliotecaState extends State<TelaBiblioteca> {
         _diasDesdeIngresso = diasIngresso;
         _praticas = praticasComStreak;
         _cartas = cartas;
+        _temCartaNova = temNova;
         _carregando = false;
       });
+      cartaNovaNotifier.value = temNova;
 
       // Se for hora de uma nova carta e não existe carta dessa semana, gera automaticamente
       final semanaAtual = _semanaInicioAtual();
@@ -194,7 +211,7 @@ class _TelaBibliotecaState extends State<TelaBiblioteca> {
       _erroCarta = null;
     });
     try {
-      await BancoRelatorios.gerar();
+      await BancoRelatorios.gerar(semanaInicio: _semanaInicioAtual());
       final cartas = await BancoRelatorios.carregar();
       if (!mounted) return;
       setState(() {
@@ -211,13 +228,24 @@ class _TelaBibliotecaState extends State<TelaBiblioteca> {
     }
   }
 
-  void _abrirCarta(Map<String, dynamic> carta) {
+  Future<void> _abrirCarta(Map<String, dynamic> carta) async {
     HapticFeedback.lightImpact();
+
+    // Marca como lida antes de abrir
+    final semanaInicio = carta['semana_inicio'] as String? ?? '';
+    if (_temCartaNova && semanaInicio.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_prefKeyCartaLida, semanaInicio);
+      if (mounted) setState(() => _temCartaNova = false);
+      cartaNovaNotifier.value = false;
+    }
+
+    if (!mounted) return;
     Navigator.push(
       context,
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => _TelaCartaCompleta(carta: carta),
-        transitionsBuilder: (_, anim, __, child) =>
+        pageBuilder: (_, _, _) => _TelaCartaCompleta(carta: carta),
+        transitionsBuilder: (_, anim, _, child) =>
             FadeTransition(opacity: anim, child: child),
         transitionDuration: const Duration(milliseconds: 400),
       ),
@@ -238,12 +266,12 @@ class _TelaBibliotecaState extends State<TelaBiblioteca> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 48),
-              Text(T.bibTitulo, style: KT.displayL()),
+              KT.tituloGradiente(T.bibTitulo),
               const SizedBox(height: 8),
               Text(T.estudoSiMesmo, style: KT.caption()),
 
               const SizedBox(height: 48),
-              Divider(color: KC.grafite, height: 1, thickness: 1),
+              KT.divisor(),
               const SizedBox(height: 32),
 
               if (_carregando)
@@ -265,6 +293,7 @@ class _TelaBibliotecaState extends State<TelaBiblioteca> {
                 else
                   _CardCarta(
                     carta: _cartas.first,
+                    nova: _temCartaNova,
                     aoAbrir: () => _abrirCarta(_cartas.first),
                   ),
 
@@ -282,7 +311,7 @@ class _TelaBibliotecaState extends State<TelaBiblioteca> {
                 ],
 
                 const SizedBox(height: 48),
-                Divider(color: KC.grafite, height: 1, thickness: 1),
+                KT.divisor(),
                 const SizedBox(height: 32),
 
                 // ── ESTATÍSTICAS ─────────────────────────────────────
@@ -294,7 +323,7 @@ class _TelaBibliotecaState extends State<TelaBiblioteca> {
                 ),
 
                 const SizedBox(height: 40),
-                Divider(color: KC.grafite, height: 1, thickness: 1),
+                KT.divisor(),
                 const SizedBox(height: 32),
 
                 Text(T.sequencias, style: KT.micro()),
@@ -305,7 +334,7 @@ class _TelaBibliotecaState extends State<TelaBiblioteca> {
                   ..._praticas.map((p) => _LinhaSequencia(pratica: p)),
 
                 const SizedBox(height: 32),
-                Divider(color: KC.grafite, height: 1, thickness: 1),
+                KT.divisor(),
                 const SizedBox(height: 32),
 
                 Text(T.totais, style: KT.micro()),
@@ -339,9 +368,10 @@ class _TelaBibliotecaState extends State<TelaBiblioteca> {
 
 class _CardCarta extends StatelessWidget {
   final Map<String, dynamic> carta;
+  final bool nova;
   final VoidCallback aoAbrir;
 
-  const _CardCarta({required this.carta, required this.aoAbrir});
+  const _CardCarta({required this.carta, required this.nova, required this.aoAbrir});
 
   String _formatarData(String? data) {
     if (data == null) return '';
@@ -361,24 +391,41 @@ class _CardCarta extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          border: Border.all(color: KC.kin, width: 1),
+          color: KC.card,
+          border: Border.all(
+            color: KC.kin,
+            width: nova ? 1.5 : 1,
+          ),
           borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: nova
+                  ? KC.kin.withValues(alpha: 0.22)
+                  : Colors.black.withValues(alpha: KC.escuro ? 0.22 : 0.07),
+              blurRadius: nova ? 28 : 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: KC.kin, width: 1.5),
-                  ),
-                ),
+                KairoEnso(tamanho: 24, cor: KC.acento),
                 const SizedBox(width: 12),
-                Text(T.semanaDe(inicio, fim), style: KT.micro(cor: KC.kin)),
+                Expanded(
+                  child: Text(T.semanaDe(inicio, fim), style: KT.micro(cor: KC.kin)),
+                ),
+                if (nova)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: KC.kin.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(T.cartaNovaBadge, style: KT.micro(cor: KC.kin)),
+                  ),
               ],
             ),
             const SizedBox(height: 16),
@@ -550,14 +597,7 @@ class _TelaCartaCompleta extends StatelessWidget {
                   children: [
                     const SizedBox(height: 16),
 
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: KC.kin, width: 1.5),
-                      ),
-                    ),
+                    KairoEnso(tamanho: 48, cor: KC.acento),
                     const SizedBox(height: 24),
 
                     Text(T.cartaMentor, style: KT.micro(cor: KC.kin)),

@@ -219,12 +219,12 @@ class _TelaDojoState extends State<TelaDojo> {
             children: [
               const SizedBox(height: 48),
 
-              Text(T.dojo, style: KT.displayL()),
+              KT.tituloGradiente(T.dojo),
               const SizedBox(height: 8),
               Text(T.dojoNPraticasAtivas(_praticas.length), style: KT.caption()),
 
               const SizedBox(height: 40),
-              Divider(color: KC.grafite, height: 1, thickness: 1),
+              KT.divisor(),
               const SizedBox(height: 32),
 
               if (_carregando)
@@ -251,13 +251,42 @@ class _TelaDojoState extends State<TelaDojo> {
                 onTap: _abrirBiblioteca,
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
                   decoration: BoxDecoration(
-                    border: Border.all(color: KC.grafite, width: 1),
-                    borderRadius: BorderRadius.circular(8),
+                    color: KC.card,
+                    borderRadius: BorderRadius.circular(16),
+                    border: KC.escuro ? null : Border.all(color: KC.linha, width: 1),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: KC.escuro ? 0.22 : 0.07),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                  child: Center(
-                    child: Text(T.adicionarPratica, style: KT.body(cor: KC.cinza)),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: Center(
+                          child: Icon(
+                            Icons.add,
+                            size: 28,
+                            color: KC.acento.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 18),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(T.escolhaPratica, style: KT.body()),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -324,27 +353,47 @@ class _ItemPratica extends StatelessWidget {
 
           const SizedBox(height: 12),
 
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(T.ultimos7Dias, style: KT.micro(cor: KC.fumo)),
-              const SizedBox(width: 16),
-              ...pratica.ultimos7Dias.map((feito) => Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: feito ? KC.matcha : Colors.transparent,
-                    border: Border.all(
-                      color: feito ? KC.matcha : KC.grafite,
-                      width: 1,
+              const SizedBox(height: 8),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: List.generate(7, (i) {
+                  final dia   = DateTime.now().subtract(Duration(days: 6 - i));
+                  final letra = T.diaSemanaAbrev(dia.weekday);
+                  final feito = pratica.ultimos7Dias[i];
+                  final eHoje = i == 6;
+                  final corLetra = eHoje ? KC.acento : KC.fumo;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 10),
+                    child: Column(
+                      children: [
+                        Text(letra, style: KT.micro(cor: corLetra)),
+                        const SizedBox(height: 4),
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: feito ? KC.matcha : Colors.transparent,
+                            border: Border.all(
+                              color: feito ? KC.matcha : KC.grafite,
+                              width: 1,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ),
-              )),
+                  );
+                }),
+              ),
             ],
           ),
+
+          const SizedBox(height: 16),
+          KT.divisor(),
         ],
       ),
     );
@@ -473,15 +522,13 @@ class _BibliotecaPraticasState extends State<_BibliotecaPraticas> {
             ),
 
             const SizedBox(height: 16),
-            Divider(color: KC.grafite, height: 1, thickness: 1),
+            KT.divisor(),
 
             Expanded(
               child: ListView.separated(
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                 itemCount: praticas.length + 1, // +1 pro botão de personalizada
-                separatorBuilder: (_, __) => Divider(
-                  color: KC.grafite, height: 1, thickness: 1,
-                ),
+                separatorBuilder: (_, _) => KT.divisor(),
                 itemBuilder: (_, i) {
                   // Último item: botão de adicionar personalizada
                   if (i == praticas.length) {
