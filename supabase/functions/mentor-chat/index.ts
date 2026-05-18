@@ -120,20 +120,31 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const supabaseUrl     = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const anthropicKey    = Deno.env.get('ANTHROPIC_API_KEY');
+    const supabaseUrl      = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey  = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const serviceRoleKey   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const anthropicKey     = Deno.env.get('ANTHROPIC_API_KEY');
 
-    if (!anthropicKey) {
-      return new Response(JSON.stringify({ error: 'ANTHROPIC_API_KEY não configurada no servidor' }), {
+    if (!anthropicKey || !serviceRoleKey) {
+      // Falha de configuração do servidor — não detalhar ao client.
+      console.error('Config ausente: ANTHROPIC_API_KEY ou SUPABASE_SERVICE_ROLE_KEY');
+      return new Response(JSON.stringify({ error: 'erro_interno' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Cliente Supabase autenticado com o token do usuário
+    // Cliente autenticado com o JWT do usuário — usado SÓ para ler dados do
+    // usuário (profiles), mantendo RLS. Nunca decide modelo nem grava ledger.
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
+    });
+
+    // Cliente service role — bypassa RLS. Usado APENAS para o gating
+    // (is_premium) e para gravar o ledger uso_ia. É o que torna o limite
+    // não-burlável: a contagem lê uma tabela que só a função escreve.
+    const supabaseService = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false },
     });
 
     // Confirma que o usuário existe e está logado
@@ -154,7 +165,9 @@ Deno.serve(async (req: Request) => {
 
     const corpo = await req.json();
     const messages = corpo.messages;
-    const usarSonnet = corpo.usarSonnet === true;
+    // prefereSonnet é apenas uma INTENÇÃO do client. Só tem efeito se o
+    // usuário for premium (decidido server-side abaixo). Não-premium = Haiku.
+    const prefereSonnet = corpo.prefereSonnet === true;
 
     // Validação de entrada (proteção contra abuso)
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -184,17 +197,31 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Rate limiting básico: máximo 60 chamadas/hora por usuário
+    // ── Gating server-side: o MODELO é decidido aqui, nunca pelo client ──────
+    // premium vem da função canônica is_premium (via service role). Enquanto
+    // a Fase 03 não criar subscriptions, is_premium retorna false p/ todos
+    // (Sonnet desligado para todos — fallback Haiku).
+    const { data: premiumData, error: premiumErr } = await supabaseService
+      .rpc('is_premium', { uid: user.id });
+    if (premiumErr) {
+      console.error('Erro ao avaliar is_premium:', premiumErr.message);
+    }
+    const premium = premiumData === true;
+    const modelo = (premium && prefereSonnet) ? MODELO_SONNET : MODELO_HAIKU;
+
+    // ── Rate limit não-burlável: conta o ledger uso_ia (escrito só por esta
+    // função via service role), não a tabela mensagens preenchida pelo client.
+    const limitePorHora = premium ? 120 : 20;
     const umaHoraAtras = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const { count: usoRecente } = await supabaseClient
-      .from('mensagens')
+    const { count: usoRecente } = await supabaseService
+      .from('uso_ia')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', user.id)
-      .eq('role', 'user')
+      .eq('funcao', 'mentor-chat')
       .gte('created_at', umaHoraAtras);
 
-    if ((usoRecente ?? 0) > 60) {
-      return new Response(JSON.stringify({ error: 'Limite por hora atingido. Aguarde um pouco.' }), {
+    if ((usoRecente ?? 0) >= limitePorHora) {
+      return new Response(JSON.stringify({ error: 'rate_limit' }), {
         status: 429,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -214,7 +241,7 @@ Deno.serve(async (req: Request) => {
         'anthropic-beta': 'prompt-caching-2024-07-31',
       },
       body: JSON.stringify({
-        model: usarSonnet ? MODELO_SONNET : MODELO_HAIKU,
+        model: modelo,
         max_tokens: 400,
         system: [
           {
@@ -230,10 +257,22 @@ Deno.serve(async (req: Request) => {
     const claudeData = await claudeResp.json();
 
     if (!claudeResp.ok) {
-      return new Response(JSON.stringify({ error: claudeData }), {
-        status: claudeResp.status,
+      // Não vazar o objeto de erro da Anthropic ao client.
+      console.error('Anthropic falhou:', claudeResp.status, JSON.stringify(claudeData));
+      return new Response(JSON.stringify({ error: 'mentor_erro' }), {
+        status: 502,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
+
+    // Resposta OK: registra 1 linha no ledger via service role. É a escrita
+    // pela função (não pelo client) que torna o rate limit não-burlável.
+    const { error: ledgerErr } = await supabaseService
+      .from('uso_ia')
+      .insert({ user_id: user.id, funcao: 'mentor-chat', modelo });
+    if (ledgerErr) {
+      // Não bloquear a resposta do usuário por falha de auditoria; só logar.
+      console.error('Falha ao gravar uso_ia:', ledgerErr.message);
     }
 
     return new Response(JSON.stringify({
@@ -242,7 +281,8 @@ Deno.serve(async (req: Request) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (e) {
-    return new Response(JSON.stringify({ error: (e as Error).message }), {
+    console.error('mentor-chat erro interno:', (e as Error).message);
+    return new Response(JSON.stringify({ error: 'erro_interno' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

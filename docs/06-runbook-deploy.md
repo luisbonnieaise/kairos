@@ -119,12 +119,33 @@ Qualidade (Fase 05):
 
 ---
 
-## 9. Alertas de custo — preenchido pelo PROMPT 1.6
+## 9. Alertas de custo
 
-- [ ] Anthropic: spend alerts/limites configurados. Teto mensal alvo: `____`.
-- [ ] Supabase: spend cap / alertas de Edge Functions e DB.
-- [ ] Stripe: alertas de falha de pagamento / disputas.
-- [ ] Alerta de erro do `stripe-webhook` > limiar (Fase 04 observabilidade).
+> O código da Fase 01 fecha os vetores de custo *no app* (modelo server-side,
+> rate limit não-burlável via `uso_ia`, validação de `semana_inicio`). Esta
+> seção é a rede de segurança *fora do app*: limites de gasto nos provedores,
+> para o caso de um vetor não previsto. Itens não-código — o dono preenche os
+> alvos e marca como feito.
+
+**Limite mensal alvo (a definir pelo dono):** `____ USD/mês` (Anthropic) ·
+`____ USD/mês` (Supabase). Defina antes de abrir ao público.
+
+- [ ] **Anthropic Console → Billing → Usage limits / Spend alerts:** definir
+      limite de gasto mensal igual ao alvo acima e alerta em ~50% e ~80%.
+      (https://console.anthropic.com/settings/billing)
+- [ ] **Anthropic → Billing → Usage:** revisar semanalmente o consumo por
+      modelo (Haiku vs. Sonnet) e cruzar com a tabela `uso_ia` (mesma contagem
+      que o rate limit usa) para detectar divergência/abuso.
+- [ ] **Supabase → Organization → Billing → Spend cap:** ativar spend cap e
+      configurar alerta de uso de Edge Functions (invocações) e do banco.
+- [ ] **Supabase → Reports/Logs:** alerta para pico anômalo de invocações de
+      `mentor-chat` / `relatorio-semanal` (proxy de tentativa de abuso).
+- [ ] **Stripe → alertas** de falha de pagamento / disputas (relevante a
+      partir da Fase 03).
+- [ ] Alerta de erro do `stripe-webhook` acima de limiar (Fase 04
+      observabilidade).
+- [ ] Runbook de estouro: ver §10 "Custo de IA disparando" (desligar Sonnet,
+      reduzir rate limits, investigar `uso_ia`).
 
 ---
 

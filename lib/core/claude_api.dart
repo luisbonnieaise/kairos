@@ -5,15 +5,19 @@ class ClaudeAPI {
   /// Chama a Edge Function 'mentor-chat' no Supabase.
   /// A chave ANTHROPIC_API_KEY fica protegida no servidor.
   /// Lança exceção sem detalhes técnicos pra UI tratar.
+  ///
+  /// [prefereSonnet] é apenas uma PREFERÊNCIA do client, não uma ordem: o
+  /// servidor decide o modelo conforme a assinatura (`is_premium`). Clientes
+  /// não-premium recebem SEMPRE Haiku, independente do valor enviado aqui.
   static Future<String> mentor({
     required List<Map<String, String>> mensagens,
-    bool usarSonnet = false,
+    bool prefereSonnet = false,
   }) async {
     final resposta = await supabase.functions.invoke(
       'mentor-chat',
       body: {
         'messages': mensagens,
-        'usarSonnet': usarSonnet,
+        'prefereSonnet': prefereSonnet,
       },
     );
 

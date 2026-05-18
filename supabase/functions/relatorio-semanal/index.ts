@@ -80,6 +80,24 @@ function calcularSemanaUTC(): { dataInicio: string; dataFim: string } {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+// Validação de semana_inicio — defesa contra custo ilimitado.
+// Convenção do app (lib/telas/biblioteca.dart::_semanaInicioAtual): semana_fim
+// é o domingo mais recente; semana_inicio = domingo - 6 dias → SEMPRE uma
+// SEGUNDA-FEIRA. Em UTC, segunda = getUTCDay() === 1.
+// Regras: formato ISO, ser segunda-feira, não estar no futuro nem mais de
+// 366 dias no passado. Retorna a data normalizada ou null se inválida.
+function validarSemanaInicio(s: string): string | null {
+  if (!ISO_DATE.test(s)) return null;
+  const d = new Date(`${s}T12:00:00Z`); // meio-dia UTC elimina ambiguidade de DST
+  if (Number.isNaN(d.getTime())) return null;
+  if (d.getUTCDay() !== 1) return null; // não é segunda-feira
+
+  const agora = Date.now();
+  if (d.getTime() > agora) return null; // futuro
+  if (agora - d.getTime() > 366 * 24 * 60 * 60 * 1000) return null; // > 366 dias atrás
+  return s;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -96,17 +114,27 @@ Deno.serve(async (req: Request) => {
 
     const supabaseUrl     = Deno.env.get('SUPABASE_URL')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const serviceRoleKey  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const anthropicKey    = Deno.env.get('ANTHROPIC_API_KEY');
 
-    if (!anthropicKey) {
-      return new Response(JSON.stringify({ error: 'ANTHROPIC_API_KEY não configurada' }), {
+    if (!anthropicKey || !serviceRoleKey) {
+      // Falha de configuração do servidor — não detalhar ao client.
+      console.error('Config ausente: ANTHROPIC_API_KEY ou SUPABASE_SERVICE_ROLE_KEY');
+      return new Response(JSON.stringify({ error: 'erro_interno' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
+    // Client autenticado por JWT do usuário — lê dados do usuário com RLS.
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
+    });
+
+    // Client service role — bypassa RLS. Usado APENAS para o ledger uso_ia
+    // (rate limit não-burlável: a contagem lê uma tabela que só a função grava).
+    const supabaseService = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false },
     });
 
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
@@ -122,11 +150,24 @@ Deno.serve(async (req: Request) => {
     let bodyData: { semana_inicio?: string } = {};
     try { bodyData = await req.json(); } catch { /* corpo vazio ou não-JSON */ }
 
-    const { dataInicio, dataFim } = (
-      bodyData.semana_inicio && ISO_DATE.test(bodyData.semana_inicio)
-        ? calcularSemanaDoCliente(bodyData.semana_inicio)
-        : calcularSemanaUTC() // fallback para compatibilidade
-    );
+    // Se o client mandou semana_inicio, ele PRECISA ser válido (segunda-feira,
+    // dentro da janela): é o único valor controlável pelo client e o vetor de
+    // custo ilimitado. Se ausente, usa o relógio UTC do servidor (seguro,
+    // não controlável pelo client) — preserva compat com clients antigos.
+    let dataInicio: string;
+    let dataFim: string;
+    if (bodyData.semana_inicio !== undefined && bodyData.semana_inicio !== null) {
+      const valida = validarSemanaInicio(String(bodyData.semana_inicio));
+      if (!valida) {
+        return new Response(JSON.stringify({ error: 'data_invalida' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      ({ dataInicio, dataFim } = calcularSemanaDoCliente(valida));
+    } else {
+      ({ dataInicio, dataFim } = calcularSemanaUTC());
+    }
 
     // Carrega perfil
     const { data: perfil } = await supabaseClient
@@ -144,7 +185,28 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (cartaExistente) {
+      // Idempotência: carta da semana já existe. Devolve sem chamar Claude e
+      // SEM gravar no ledger (não houve chamada à Anthropic).
       return new Response(JSON.stringify({ relatorio: cartaExistente }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ── Rate limit não-burlável: conta o ledger uso_ia (escrito só por esta
+    // função via service role). A idempotência por semana já evita custo
+    // repetido da MESMA semana; este limite cobre datas distintas (ex.: varrer
+    // 52 segundas do ano). Máx 3 gerações por usuário por 24h.
+    const vinteQuatroHorasAtras = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { count: usoRecente } = await supabaseService
+      .from('uso_ia')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('funcao', 'relatorio-semanal')
+      .gte('created_at', vinteQuatroHorasAtras);
+
+    if ((usoRecente ?? 0) >= 3) {
+      return new Response(JSON.stringify({ error: 'rate_limit' }), {
+        status: 429,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -238,10 +300,23 @@ Agora escreva a carta semanal seguindo a estrutura JSON.`;
     const claudeData = await claudeResp.json();
 
     if (!claudeResp.ok) {
-      return new Response(JSON.stringify({ error: claudeData }), {
-        status: claudeResp.status,
+      // Não vazar o objeto de erro da Anthropic ao client.
+      console.error('Anthropic falhou:', claudeResp.status, JSON.stringify(claudeData));
+      return new Response(JSON.stringify({ error: 'relatorio_erro' }), {
+        status: 502,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
+
+    // Chamada à Anthropic efetivada (evento faturável): registra 1 linha no
+    // ledger via service role. É a escrita pela função — não pelo client —
+    // que torna o rate limit não-burlável. Falha de auditoria não bloqueia
+    // a resposta do usuário; só loga.
+    const { error: ledgerErr } = await supabaseService
+      .from('uso_ia')
+      .insert({ user_id: user.id, funcao: 'relatorio-semanal', modelo: MODELO_SONNET });
+    if (ledgerErr) {
+      console.error('Falha ao gravar uso_ia:', ledgerErr.message);
     }
 
     const textoCru = claudeData.content[0].text as string;
@@ -249,8 +324,9 @@ Agora escreva a carta semanal seguindo a estrutura JSON.`;
     // Extrai JSON da resposta (caso venha com texto extra)
     const matchJson = textoCru.match(/\{[\s\S]*\}/);
     if (!matchJson) {
-      return new Response(JSON.stringify({ error: 'Resposta sem JSON', raw: textoCru }), {
-        status: 500,
+      console.error('Relatório sem JSON na resposta do modelo:', textoCru.slice(0, 500));
+      return new Response(JSON.stringify({ error: 'relatorio_erro' }), {
+        status: 502,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -259,8 +335,9 @@ Agora escreva a carta semanal seguindo a estrutura JSON.`;
     try {
       relatorio = JSON.parse(matchJson[0]);
     } catch {
-      return new Response(JSON.stringify({ error: 'JSON inválido', raw: textoCru }), {
-        status: 500,
+      console.error('Relatório com JSON inválido:', matchJson[0].slice(0, 500));
+      return new Response(JSON.stringify({ error: 'relatorio_erro' }), {
+        status: 502,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -281,7 +358,8 @@ Agora escreva a carta semanal seguindo a estrutura JSON.`;
       .single();
 
     if (salvoErro) {
-      return new Response(JSON.stringify({ error: salvoErro.message }), {
+      console.error('Falha ao salvar relatorio_semanal:', salvoErro.message);
+      return new Response(JSON.stringify({ error: 'erro_interno' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -291,7 +369,8 @@ Agora escreva a carta semanal seguindo a estrutura JSON.`;
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (e) {
-    return new Response(JSON.stringify({ error: (e as Error).message }), {
+    console.error('relatorio-semanal erro interno:', (e as Error).message);
+    return new Response(JSON.stringify({ error: 'erro_interno' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
