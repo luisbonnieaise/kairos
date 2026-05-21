@@ -6,9 +6,11 @@ import '../core/banco.dart';
 import '../core/notificacoes.dart';
 import '../core/i18n.dart';
 import '../core/tutorial.dart';
+import '../core/billing.dart';
 import '../widgets/kairo_avatar.dart';
 import '../main.dart';
 import 'home.dart';
+import 'premium.dart';
 
 class TelaPerfil extends StatefulWidget {
   const TelaPerfil({super.key});
@@ -417,6 +419,15 @@ class _TelaPerfilState extends State<TelaPerfil> {
                     KT.divisor(),
                     const SizedBox(height: 32),
 
+                    // Kairo Premium (Fase 03)
+                    Text(T.premiumTitulo, style: KT.micro()),
+                    const SizedBox(height: 12),
+                    _LinhaPremium(),
+
+                    const SizedBox(height: 40),
+                    KT.divisor(),
+                    const SizedBox(height: 32),
+
                     Text(T.identidadeLabel, style: KT.micro()),
                     const SizedBox(height: 12),
 
@@ -630,6 +641,81 @@ class _TelaPerfilState extends State<TelaPerfil> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── LINHA DO KAIRO PREMIUM (status + entrada do paywall) ─────────────────────
+
+class _LinhaPremium extends StatefulWidget {
+  @override
+  State<_LinhaPremium> createState() => _LinhaPremiumState();
+}
+
+class _LinhaPremiumState extends State<_LinhaPremium> {
+  bool _carregando = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _carregar();
+  }
+
+  Future<void> _carregar() async {
+    await Billing.instance.refresh();
+    if (!mounted) return;
+    setState(() => _carregando = false);
+  }
+
+  String _formatarData(DateTime d) {
+    String pad(int n) => n.toString().padLeft(2, '0');
+    return '${pad(d.day)}/${pad(d.month)}/${d.year}';
+  }
+
+  Future<void> _abrirPaywall() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const TelaPremium()),
+    );
+    if (!mounted) return;
+    // Pode ter mudado de estado (assinou/cancelou) — re-render.
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final billing = Billing.instance;
+    final premium = billing.cachePremium == true;
+    final periodoFim = billing.periodoFim;
+
+    return GestureDetector(
+      onTap: _abrirPaywall,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _carregando
+                      ? T.carregando
+                      : (premium ? T.premiumAtivo : T.premiumGratuito),
+                  style: KT.body(cor: premium ? KC.kin : null),
+                ),
+              ),
+              Icon(Icons.chevron_right, size: 18, color: KC.fumo),
+            ],
+          ),
+          if (premium && periodoFim != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              '${T.premiumAtivoAte} ${_formatarData(periodoFim)}',
+              style: KT.caption(),
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -11,7 +11,7 @@ Schemas Postgres do projeto Kairo (Supabase). Rodar **na ordem numerada** no SQL
 5. `05_relatorios_semanais.sql` — cartas semanais do Mentor
 6. `06_storage_avatares.sql` — bucket `profire` para avatares
 7. `07_uso_ia.sql` — ledger server-side de uso de IA + função `is_premium()`
-8. *(reservado p/ Fase 03 — `08_subscriptions.sql`, billing Stripe)*
+8. `08_subscriptions.sql` — Kairo Premium: tabela `subscriptions` (espelho do Stripe) + `stripe_events` (idempotência) + realinhamento de `is_premium()`
 9. `09_cron_relatorios.sql` — fila + dispatcher pg_cron/pg_net que mata o burst de domingo
 10. `10_indices_revisao.sql` — auditoria de índices p/ 30k MAUs (sem efeito; registro de cobertura)
 

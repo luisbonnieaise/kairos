@@ -56,14 +56,65 @@ supabase functions deploy stripe-webhook --no-verify-jwt   # <- obrigatório
 - [ ] Produto "Kairo Premium" + `price` recorrente (mensal; anual opcional). Copiar price id → `STRIPE_PRICE_PREMIUM`.
 - [ ] Webhook endpoint → URL pública de `stripe-webhook`. Eventos: `checkout.session.completed`, `customer.subscription.created|updated|deleted`, `invoice.payment_failed`. Copiar signing secret → `STRIPE_WEBHOOK_SECRET`.
 - [ ] Customer Portal habilitado (se a 3.5 implementar portal).
-- [ ] Esquema de deep link de retorno (success/cancel) — **preencher aqui o esquema escolhido na 3.6:** `__________`.
+- [x] **Esquema de deep link de retorno (success/cancel):** `kairo://premium/sucesso` e `kairo://premium/cancelado`. Declarado em [`AndroidManifest.xml`](../android/app/src/main/AndroidManifest.xml) e [`Info.plist`](../ios/Runner/Info.plist); whitelist na Edge Function `stripe-checkout` aceita por padrão prefixo `kairo://` (configurável via `APP_DEEP_LINK_EXTRA` para dev). O cliente envia esses dois URLs no body do `stripe-checkout` — o servidor rejeita 400 `corpo_invalido` se vierem fora do whitelist.
 - [ ] Trocar chaves test → live no go-live; refazer webhook secret no modo live.
 
 ### Validação Stripe (roteiro — preenchido pelo PROMPT 3.7)
 
-- [ ] `stripe listen --forward-to <url stripe-webhook>` + `stripe trigger ...`
-- [ ] Reenviar mesmo evento 2x → 1 linha em `stripe_events`, estado correto.
-- [ ] `updated` e `deleted` quase juntos → converge ao estado real (re-fetch).
+Pré-requisito: [Stripe CLI](https://docs.stripe.com/stripe-cli) instalada e `stripe login`. Em janelas separadas:
+
+**Terminal A — forward dos eventos:**
+```bash
+stripe listen --forward-to https://<projeto>.supabase.co/functions/v1/stripe-webhook
+# A CLI imprime um whsec_… use-o como STRIPE_WEBHOOK_SECRET DO AMBIENTE EM TESTE
+# (não confundir com o secret do endpoint real do painel — refazer no go-live).
+```
+
+**Terminal B — disparar e validar:**
+
+1. Idempotência (mesmo evento 2x → 1 linha em `stripe_events`):
+   ```bash
+   stripe trigger checkout.session.completed
+   stripe events resend evt_xxx --webhook-endpoint we_yyy
+   ```
+   No SQL Editor do Supabase:
+   ```sql
+   select count(*) from public.stripe_events;
+   -- esperado: exatamente 1 linha para esse event.id
+   ```
+
+2. Convergência fora-de-ordem (`updated` antes de `created`):
+   ```bash
+   stripe trigger customer.subscription.updated
+   stripe trigger customer.subscription.created
+   ```
+   No SQL Editor:
+   ```sql
+   select status, current_period_end, cancel_at_period_end
+     from public.subscriptions order by updated_at desc limit 1;
+   -- esperado: estado coerente com o que a Stripe mostra agora (re-fetch
+   -- canônico absorve a ordem real, não a de chegada do webhook).
+   ```
+
+3. Cancelamento volta a Haiku no Mentor:
+   ```bash
+   stripe trigger customer.subscription.deleted
+   ```
+   - [ ] `subscriptions.status` virou `canceled` no banco.
+   - [ ] Chamada subsequente ao Mentor pelo usuário afetado responde com Haiku (`premium: false`).
+
+4. Pagamento falhado mantém o estado real:
+   ```bash
+   stripe trigger invoice.payment_failed
+   ```
+   - [ ] `subscriptions.status` reflete o que a Stripe diz (geralmente `past_due`).
+
+**Checklist final**
+
+- [ ] Payload com assinatura inválida → `400`, zero escrita em `subscriptions` ou `stripe_events`. Teste forçando um `STRIPE_WEBHOOK_SECRET` errado e reenviando um evento.
+- [ ] Reenviar mesmo evento 2x → 1 linha em `stripe_events`, estado correto em `subscriptions`.
+- [ ] `updated` e `deleted` próximos → estado final = re-fetch da Stripe (não ordem de chegada).
+- [ ] Webhook responde em < 5s em todos os casos (ver logs do Supabase).
 
 ---
 

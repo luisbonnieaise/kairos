@@ -238,6 +238,86 @@ class T {
   static String get salvar => _g('Salvar', 'Save', 'Guardar', 'Speichern');
   static String get salvando => _g('Salvando...', 'Saving...', 'Guardando...', 'Speichern...');
 
+  // ── KAIRO PREMIUM (Fase 03 — Stripe) ───────────────────────────────────────
+  static String get premiumTitulo => _g(
+    'Kairo Premium',
+    'Kairo Premium',
+    'Kairo Premium',
+    'Kairo Premium',
+  );
+  static String get premiumChamada => _g(
+    'O Mentor mais profundo, a carta semanal garantida, limites ampliados.',
+    'A deeper Mentor, guaranteed weekly letter, expanded limits.',
+    'El Mentor más profundo, la carta semanal garantizada, límites ampliados.',
+    'Ein tieferer Mentor, garantierter Wochenbrief, erweiterte Grenzen.',
+  );
+  static String get premiumBeneficioMentor => _g(
+    'Mentor com o modelo mais sábio (Claude Sonnet).',
+    'Mentor with the wisest model (Claude Sonnet).',
+    'Mentor con el modelo más sabio (Claude Sonnet).',
+    'Mentor mit dem weisesten Modell (Claude Sonnet).',
+  );
+  static String get premiumBeneficioCarta => _g(
+    'Carta semanal garantida, mesmo em semanas cheias.',
+    'Weekly letter guaranteed, even in busy weeks.',
+    'Carta semanal garantizada, incluso en semanas llenas.',
+    'Wochenbrief garantiert, auch in vollen Wochen.',
+  );
+  static String get premiumBeneficioLimites => _g(
+    'Limites ampliados de conversa com o Mentor.',
+    'Expanded conversation limits with the Mentor.',
+    'Límites ampliados de conversación con el Mentor.',
+    'Erweiterte Gesprächslimits mit dem Mentor.',
+  );
+  static String get premiumAssinar => _g(
+    'Assinar',
+    'Subscribe',
+    'Suscribirse',
+    'Abonnieren',
+  );
+  static String get premiumAtivo => _g(
+    'Ativo',
+    'Active',
+    'Activo',
+    'Aktiv',
+  );
+  static String get premiumGratuito => _g(
+    'Gratuito',
+    'Free',
+    'Gratuito',
+    'Kostenlos',
+  );
+  static String get premiumAtivoAte => _g(
+    'Ativo até',
+    'Active until',
+    'Activo hasta',
+    'Aktiv bis',
+  );
+  static String get premiumRetornoSucesso => _g(
+    'Assinatura confirmada. Bem-vindo ao Premium.',
+    'Subscription confirmed. Welcome to Premium.',
+    'Suscripción confirmada. Bienvenido a Premium.',
+    'Abo bestätigt. Willkommen bei Premium.',
+  );
+  static String get premiumRetornoCancelado => _g(
+    'Você cancelou. Pode voltar a assinar quando quiser.',
+    'You canceled. You can subscribe again anytime.',
+    'Cancelaste. Puedes volver a suscribirte cuando quieras.',
+    'Du hast abgebrochen. Du kannst jederzeit erneut abonnieren.',
+  );
+  static String get premiumGerenciarStripe => _g(
+    'Gerenciar/cancelar pelo recibo da Stripe enviado por e-mail.',
+    'Manage/cancel via the Stripe receipt sent by email.',
+    'Gestiona/cancela desde el recibo de Stripe enviado por correo.',
+    'Verwalten/kündigen über die per E-Mail gesendete Stripe-Quittung.',
+  );
+  static String get assinaturaErro => _g(
+    'Não foi possível abrir o pagamento. Tente novamente.',
+    'Could not open payment. Try again.',
+    'No se pudo abrir el pago. Inténtalo de nuevo.',
+    'Zahlung konnte nicht geöffnet werden. Versuche es erneut.',
+  );
+
   // ── PÁTIO (INÍCIO) ─────────────────────────────────────────────────────────
   static String get mentorLabel => _g('MENTOR', 'MENTOR', 'MENTOR', 'MENTOR');
   static String get mentorFoque => _g(

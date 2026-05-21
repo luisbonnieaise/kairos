@@ -287,8 +287,12 @@ Deno.serve(async (req: Request) => {
       console.error('Falha ao gravar uso_ia:', ledgerErr.message);
     }
 
+    // `premium` é APENAS para display na UI (badge/estado da assinatura).
+    // O modelo já foi decidido server-side via is_premium() acima; o client
+    // nunca deve usar este campo para decisões de segurança/cobrança.
     return new Response(JSON.stringify({
       text: claudeData.content[0].text,
+      premium,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
