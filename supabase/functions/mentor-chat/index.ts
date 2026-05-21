@@ -1,6 +1,16 @@
 // Supabase Edge Function — Mentor Chat
 // Recebe mensagens, carrega o perfil do usuário, chama Claude API e retorna a resposta.
 // A chave ANTHROPIC_API_KEY fica protegida no servidor.
+//
+// Contrato de erro com o client (PROMPT 2.4 — varredura):
+//   { error: 'nao_autorizado' }    401 — sem Authorization header
+//   { error: 'sessao_invalida' }   401 — JWT inválido / getUser falhou
+//   { error: 'corpo_invalido' }    400 — validação do body (tamanho, roles, etc.)
+//   { error: 'rate_limit' }        429 — bateu uso_ia por janela
+//   { error: 'mentor_erro' }       502 — falha upstream da Anthropic
+//   { error: 'erro_interno' }      500 — config ausente ou exceção não tratada
+// Detalhes técnicos da causa NUNCA são devolvidos ao client — só vão para
+// console.error (logs do Supabase, acessíveis ao operador).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0';
 
@@ -114,7 +124,7 @@ Deno.serve(async (req: Request) => {
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Não autorizado' }), {
+      return new Response(JSON.stringify({ error: 'nao_autorizado' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -150,7 +160,7 @@ Deno.serve(async (req: Request) => {
     // Confirma que o usuário existe e está logado
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError || !user) {
-      return new Response(JSON.stringify({ error: 'Sessão inválida' }), {
+      return new Response(JSON.stringify({ error: 'sessao_invalida' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -170,27 +180,29 @@ Deno.serve(async (req: Request) => {
     const prefereSonnet = corpo.prefereSonnet === true;
 
     // Validação de entrada (proteção contra abuso)
+    // Códigos estáveis: o client agrupa tudo em 'mentor_erro' genérico
+    // (lib/core/claude_api.dart); detalhes da causa ficam só em console.error.
     if (!Array.isArray(messages) || messages.length === 0) {
-      return new Response(JSON.stringify({ error: 'messages é obrigatório' }), {
+      return new Response(JSON.stringify({ error: 'corpo_invalido' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
     if (messages.length > 60) {
-      return new Response(JSON.stringify({ error: 'Histórico muito longo' }), {
+      return new Response(JSON.stringify({ error: 'corpo_invalido' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
     for (const m of messages) {
       if (typeof m?.content !== 'string' || m.content.length > 4000) {
-        return new Response(JSON.stringify({ error: 'Mensagem inválida ou muito longa' }), {
+        return new Response(JSON.stringify({ error: 'corpo_invalido' }), {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
       if (m.role !== 'user' && m.role !== 'assistant') {
-        return new Response(JSON.stringify({ error: 'Role inválido' }), {
+        return new Response(JSON.stringify({ error: 'corpo_invalido' }), {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });

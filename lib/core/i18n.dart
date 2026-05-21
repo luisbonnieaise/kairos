@@ -110,11 +110,11 @@ class T {
     'Completa correo y contraseña.',
     'E-Mail und Passwort ausfüllen.',
   );
-  static String get senhaMin6 => _g(
-    'A senha precisa ter ao menos 6 caracteres.',
-    'Password must have at least 6 characters.',
-    'La contraseña debe tener al menos 6 caracteres.',
-    'Das Passwort muss mindestens 6 Zeichen haben.',
+  static String get senhaRegra => _g(
+    'A senha precisa ter ao menos 8 caracteres, com letras e números.',
+    'Password must have at least 8 characters, with letters and numbers.',
+    'La contraseña debe tener al menos 8 caracteres, con letras y números.',
+    'Das Passwort muss mindestens 8 Zeichen mit Buchstaben und Zahlen haben.',
   );
   static String get comoTeChamarErro => _g(
     'Como podemos te chamar?',
@@ -141,10 +141,10 @@ class T {
     'Zu viele Versuche. Warte einige Minuten.',
   );
   static String get senhaMuitoFraca => _g(
-    'Senha muito fraca. Use ao menos 6 caracteres.',
-    'Password too weak. Use at least 6 characters.',
-    'Contraseña muy débil. Usa al menos 6 caracteres.',
-    'Passwort zu schwach. Mindestens 6 Zeichen.',
+    'Senha muito fraca. Use ao menos 8 caracteres, com letras e números.',
+    'Password too weak. Use at least 8 characters, with letters and numbers.',
+    'Contraseña muy débil. Usa al menos 8 caracteres, con letras y números.',
+    'Passwort zu schwach. Mindestens 8 Zeichen mit Buchstaben und Zahlen.',
   );
   static String get emailInvalido => _g(
     'Email inválido.',
@@ -157,6 +157,44 @@ class T {
     'Something got lost along the way. Try again.',
     'Algo se perdió en el camino. Inténtalo de nuevo.',
     'Etwas ging verloren. Versuche es erneut.',
+  );
+
+  // Confirmação de e-mail (signup com confirmation ligada)
+  static String get confirmeSeuEmail => _g(
+    'CONFIRME SEU E-MAIL',
+    'CONFIRM YOUR EMAIL',
+    'CONFIRMA TU CORREO',
+    'BESTÄTIGE DEINE E-MAIL',
+  );
+  static String get enviamosConfirmacao => _g(
+    'Enviamos um link de confirmação para o seu e-mail. Toque no link para ativar a sua conta e depois faça login.',
+    'We sent a confirmation link to your email. Tap the link to activate your account, then sign in.',
+    'Te enviamos un enlace de confirmación a tu correo. Toca el enlace para activar tu cuenta y luego inicia sesión.',
+    'Wir haben einen Bestätigungslink an deine E-Mail gesendet. Tippe auf den Link, um dein Konto zu aktivieren, und melde dich dann an.',
+  );
+  static String get voltarAoLogin => _g(
+    'Voltar ao login',
+    'Back to sign in',
+    'Volver al inicio de sesión',
+    'Zurück zur Anmeldung',
+  );
+  static String get emailNaoConfirmado => _g(
+    'E-mail ainda não confirmado. Verifique sua caixa de entrada.',
+    'Email not confirmed yet. Check your inbox.',
+    'Correo aún no confirmado. Revisa tu bandeja de entrada.',
+    'E-Mail noch nicht bestätigt. Prüfe deinen Posteingang.',
+  );
+  static String get reenviarConfirmacao => _g(
+    'Reenviar e-mail de confirmação',
+    'Resend confirmation email',
+    'Reenviar correo de confirmación',
+    'Bestätigungs-E-Mail erneut senden',
+  );
+  static String get confirmacaoReenviada => _g(
+    'E-mail de confirmação reenviado. Verifique sua caixa de entrada.',
+    'Confirmation email resent. Check your inbox.',
+    'Correo de confirmación reenviado. Revisa tu bandeja de entrada.',
+    'Bestätigungs-E-Mail erneut gesendet. Prüfe deinen Posteingang.',
   );
 
   // Recuperar senha

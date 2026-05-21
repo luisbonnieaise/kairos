@@ -69,10 +69,42 @@ supabase functions deploy stripe-webhook --no-verify-jwt   # <- obrigatório
 
 ## 5. Supabase Auth (painel) — preenchido pelo PROMPT 2.3
 
-- [ ] Confirmação de e-mail: decisão registrada → **LIGADA / DESLIGADA:** `____` (fluxo 2.1 cobre ambos).
-- [ ] Leaked password protection (HaveIBeenPwned) **ligado**.
-- [ ] Site URL + Redirect URLs (deep link de reset/confirmação) corretos.
-- [ ] Rate limits de Auth revisados para 30k MAUs.
+Ajustes manuais no Supabase Studio. Nenhum desses é configurável via código; precisam ser revisados antes do go-live. Caminhos abaixo são do Studio em `https://supabase.com/dashboard/project/<ref>`.
+
+### 5.1 Confirmação de e-mail
+
+**Authentication → Providers → Email → "Confirm email"**.
+
+- **Decisão registrada:** **LIGADA / DESLIGADA:** `____` (marcar uma).
+- **Recomendado para produção:** LIGADA. Reduz fraude/spam e força ownership do endereço.
+- O fluxo de signup da Fase 02 ([lib/telas/auth.dart](../lib/telas/auth.dart)) cobre **os dois modos**:
+  - Ligada → tela "Confirme seu e-mail" + ação de reenviar; nenhuma chamada autenticada é disparada antes do clique no link.
+  - Desligada → sessão imediata, segue direto para o onboarding.
+- Se ligar: defina o template "Confirm signup" (Authentication → Email Templates) e teste a entrega antes do go-live (caixa de SPAM principalmente em Gmail/Outlook corporativo).
+
+### 5.2 Leaked password protection
+
+**Authentication → Policies → "Leaked password protection"**.
+
+- [ ] **Ligada.** Consulta o HaveIBeenPwned no signup/troca de senha e bloqueia senhas conhecidas em vazamentos. Complementa a regra local de 8 caracteres + letra + número (PROMPT 2.2) — o cliente garante força mínima, o servidor garante não-vazamento conhecido.
+
+### 5.3 Site URL e Redirect URLs
+
+**Authentication → URL Configuration**.
+
+- [ ] **Site URL:** URL pública canônica do app (web/landing). Ex.: `https://kairo.app`. Define o domínio base usado nos e-mails transacionais.
+- [ ] **Redirect URLs:** lista os destinos permitidos após reset de senha / confirmação. Para o app mobile, incluir o **deep link scheme do Kairo**: `____` (preencher após decisão na §4 deste runbook — mesmo scheme usado pelo Stripe success/cancel é uma boa convenção). Sem o redirect listado, o link do e-mail leva para uma página em branco do Supabase.
+- [ ] Testar o fluxo completo: pedir reset de senha → receber e-mail → clicar no link → app abre na tela de nova senha.
+
+### 5.4 Rate limits de Auth (30k MAUs)
+
+**Authentication → Rate Limits**. Defaults do Supabase são conservadores; revisar antes do ramp.
+
+- [ ] **Sign-ups / IP / hora:** padrão `30`. Para 30k MAUs com ramp gradual, manter; aumentar só se houver pico legítimo (campanha de aquisição).
+- [ ] **Token refreshes / 5 min:** padrão `150`. Folgado para app mobile típico (1 refresh/hora por sessão ativa).
+- [ ] **OTP / e-mails de magic link / hora:** padrão `30`. Avaliar subir se os logs mostrarem 429 em reenvios legítimos de confirmação.
+- [ ] **Resend / hora:** padrão `30` por endpoint. Conviver com a ação "reenviar confirmação" da Fase 02 — usuário insistente bate o limite e cai no 429; aceitável (UI mostra `T.erroGenerico`).
+- [ ] **Anomaly detection:** habilitar para sinalizar picos automáticos no Studio (não bloqueia; só notifica).
 
 ---
 

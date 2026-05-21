@@ -2,6 +2,17 @@
 // Analisa os últimos 7 dias do usuário (práticas, reflexões, conversas)
 // e gera uma carta personalizada usando Claude Sonnet.
 //
+// Contrato de erro com o client (PROMPT 2.4 — varredura):
+//   { error: 'nao_autorizado' }     401 — sem Authorization header (modo usuário)
+//   { error: 'sessao_invalida' }    401 — JWT inválido / getUser falhou
+//   { error: 'data_invalida' }      400 — semana_inicio inválida (modo CRON ou usuário)
+//   { error: 'user_id_invalido' }   400 — modo CRON sem user_id válido
+//   { error: 'rate_limit' }         429 — bateu uso_ia (3/24h, só modo usuário)
+//   { error: 'relatorio_erro' }     502 — Anthropic falhou ou resposta sem JSON
+//   { error: 'erro_interno' }       500 — config ausente, save falhou ou exceção
+// Detalhes técnicos da causa NUNCA são devolvidos ao client — só vão para
+// console.error (logs do Supabase, acessíveis ao operador).
+//
 // Dois modos de operação:
 //   1) Modo USUÁRIO (fallback manual): Authorization JWT do usuário, rate limit
 //      via uso_ia (3/24h), validação estrita de semana_inicio. Idempotente por
@@ -399,7 +410,7 @@ Deno.serve(async (req: Request) => {
 
     // ── Modo USUÁRIO (fallback manual) ────────────────────────────────────
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) return jsonResp({ error: 'Não autorizado' }, 401);
+    if (!authHeader) return jsonResp({ error: 'nao_autorizado' }, 401);
 
     // Client autenticado por JWT do usuário — lê dados do usuário com RLS.
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
@@ -407,7 +418,7 @@ Deno.serve(async (req: Request) => {
     });
 
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) return jsonResp({ error: 'Sessão inválida' }, 401);
+    if (userError || !user) return jsonResp({ error: 'sessao_invalida' }, 401);
 
     // Lê semana_inicio enviado pelo cliente (calculado em tempo local do usuário).
     let bodyData: { semana_inicio?: string } = {};
