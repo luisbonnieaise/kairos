@@ -1,0 +1,94 @@
+-- ============================================================================
+-- Kairo · 10_indices_revisao.sql
+-- Auditoria de índices vs. queries quentes (Fase 04 / PROMPT 4.2).
+--
+-- CONCLUSÃO: nada a criar. Todas as queries quentes de lib/core/banco.dart e
+-- das Edge Functions mentor-chat / relatorio-semanal estão cobertas pelos
+-- índices já criados em 01–09. Este arquivo é o registro auditado, idempotente
+-- (sem efeitos colaterais) — serve como prova de cobertura no momento da
+-- Fase 04.
+--
+-- Como rodei a auditoria:
+--   1. Listei toda chamada .from('<tabela>').select/.update/.delete/.insert
+--      em lib/core/banco.dart + supabase/functions/*.
+--   2. Para cada uma, identifiquei o filtro de igualdade, o range e o ORDER BY.
+--   3. Cruzei com os índices existentes nos scripts 01–09.
+--
+-- Tabela de cobertura (queries quentes p/ 30k MAUs):
+--
+--   profiles
+--     .select where id = $1                                  → PK (profiles.id)
+--     .upsert/.update where id = $1                          → PK
+--
+--   mensagens
+--     .select where user_id=$1 order by created_at desc lim  → mensagens_user_created_idx (user_id, created_at desc)
+--     .delete where user_id=$1                               → idem (prefixo do índice composto)
+--     .select id where user_id=$1 and role='user'
+--                       and created_at between $2 and $3     → idem; range pequeno por usuário
+--
+--   praticas
+--     .select where user_id=$1 and ativa=true
+--                   order by created_at asc                  → praticas_user_ativa_idx (user_id, ativa)
+--                                                              (sort em memória aceitável: ≤ dezenas/usuário)
+--     .delete where id=$1 and user_id=$2                     → PK (filtro extra por user_id é seguro p/ RLS, sem custo)
+--
+--   pratica_completadas
+--     .select where user_id=$1 and data=$2                   → pratica_completadas_user_data_idx (user_id, data)
+--     .select where user_id=$1 and pratica_id=$2
+--                   and data >= $3                            → pratica_completadas_pratica_data_idx (pratica_id, data)
+--     .insert (unique check)                                  → unique(user_id, pratica_id, data)
+--     .delete where user_id=$1 and pratica_id=$2 and data=$3  → unique
+--
+--   relatorios_semanais
+--     .select where user_id=$1 order by semana_inicio desc lim → relatorios_user_semana_idx (user_id, semana_inicio desc)
+--     .select where user_id=$1 and semana_inicio=$2           → unique(user_id, semana_inicio) + idx
+--     .upsert onConflict='user_id,semana_inicio'              → unique
+--
+--   reflexoes
+--     .select where user_id=$1 order by created_at desc lim   → reflexoes_user_created_idx (user_id, created_at desc)
+--     .select where user_id=$1
+--                   and created_at between $2 and $3          → idem
+--
+--   uso_ia (rate limit não-burlável, escrito só por Edge Functions)
+--     .select count where user_id=$1 and funcao=$2
+--                   and created_at >= $3                       → uso_ia_user_funcao_created_idx (user_id, funcao, created_at desc)
+--     .insert                                                  → n/a
+--
+--   cron_relatorios_fila (Fase 04)
+--     .update … where id in (select id … where status='pendente'
+--                            order by criado_em … skip locked) → cron_relatorios_fila_pendente_idx (status, criado_em)
+--                                                                WHERE status='pendente' (parcial)
+--     enfileirar com on conflict (user_id, semana_inicio)      → unique
+--
+-- ─── Avaliações que considerei e DESCARTEI ───────────────────────────────────
+--
+-- 1) Índice parcial em mensagens (user_id, created_at) WHERE role='user'.
+--    Motivo da consideração: o rate limit do mentor-chat costumava contar a
+--    tabela mensagens. Confirmado que a Fase 01 migrou TODA contagem para
+--    uso_ia (mentor-chat/index.ts §"Rate limit não-burlável"; relatorio-semanal
+--    idem). A única query restante que filtra por role='user' (carta semanal,
+--    contagem de mensagens da semana) é um range pequeno por usuário — já é
+--    seletiva no índice (user_id, created_at desc). NÃO vale o overhead de
+--    manter um índice parcial extra em uma tabela quente de escrita.
+--
+-- 2) Composto (praticas.user_id, ativa, created_at) para evitar o sort por
+--    created_at no listar de práticas. Tamanho típico ≤ dezenas/usuário; sort
+--    é desprezível. NÃO criar.
+--
+-- 3) Índice em created_at puro em reflexoes / pratica_completadas / mensagens
+--    para o enfileirar_relatorios_semanais() (Fase 04). Roda 1x/semana em
+--    background; varredura cabe na janela noturna. NÃO vale o overhead em
+--    inserts quentes (30k usuários x várias rows/dia).
+--
+-- 4) subscriptions (Fase 03 — ainda não existe). Quando o script
+--    08_subscriptions.sql nascer, criar (stripe_customer_id) e
+--    (stripe_subscription_id). NÃO é desta fase.
+--
+-- ─── Nada a criar ───────────────────────────────────────────────────────────
+-- (Bloco intencionalmente vazio. Re-executar este arquivo é no-op total.)
+-- ============================================================================
+
+-- Sentinela executável (no-op) para validar que o arquivo foi aplicado.
+do $$ begin
+  raise notice 'kairo:10_indices_revisao — auditoria sem indices faltantes';
+end $$;

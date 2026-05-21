@@ -78,10 +78,63 @@ supabase functions deploy stripe-webhook --no-verify-jwt   # <- obrigatório
 
 ## 6. Cron — preenchido pelo PROMPT 4.1
 
+A geração da carta semanal saiu do client (que disparava 30k chamadas no domingo) para um par **enfileirar + dispatcher** rodando dentro do banco (`pg_cron` + `pg_net`). A Edge Function `relatorio-semanal` ganhou um **modo CRON** que entra quando o header `x-cron-secret` confere com o secret configurado — fora desse caminho, o modo usuário (JWT) continua existindo como fallback manual.
+
+### 6.1 Setup (uma vez por ambiente)
+
+1. **Gerar o secret** (use 32+ bytes aleatórios; nunca reuse entre ambientes):
+   ```bash
+   openssl rand -hex 32
+   ```
+2. **Setar como Edge Function secret** (a função lê de `Deno.env.get('CRON_SECRET')`):
+   ```bash
+   supabase secrets set CRON_SECRET=<valor-gerado>
+   ```
+3. **Rodar `scripts/09_cron_relatorios.sql`** no SQL Editor (idempotente). Isso cria a fila, o enfileirador, o dispatcher e agenda os dois jobs.
+4. **Setar os 2 GUC** no banco — sem eles o dispatcher é **no-op silencioso por design** (evita disparo acidental antes do setup):
+   ```sql
+   ALTER DATABASE postgres SET app.cron_secret      = '<MESMO valor da etapa 1>';
+   ALTER DATABASE postgres SET app.cron_relatorio_url
+     = 'https://<projeto>.supabase.co/functions/v1/relatorio-semanal';
+   -- Aplicar nas conexões atuais (próximas conexões herdam):
+   SELECT pg_reload_conf();
+   ```
+
+### 6.2 Checklist
+
 - [ ] `pg_cron`/`pg_net` habilitados; `09_cron_relatorios.sql` aplicado.
-- [ ] `CRON_SECRET` setado nos secrets e usado pela função SQL de enfileiramento.
-- [ ] Horário/fuso do job definido: `__________`.
-- [ ] Execução manual de teste validada (gerou cartas, idempotente, espalhada).
+- [ ] `CRON_SECRET` setado nos Edge Function secrets.
+- [ ] `app.cron_secret` e `app.cron_relatorio_url` setados via `ALTER DATABASE` (valores idênticos ao secret das funções).
+- [ ] Horário/fuso do job definido: **`00:00 UTC, domingo`** (default do script — alterar via novo `cron.schedule` se necessário; documentar a expressão escolhida aqui).
+- [ ] Execução manual de teste validada (ver §6.3).
+
+### 6.3 Validar uma execução manual
+
+```sql
+-- (a) Confirma que os dois jobs estão agendados:
+select jobname, schedule, active from cron.job where jobname like 'kairo_%';
+
+-- (b) Roda o enfileirador agora (sem esperar domingo). Devolve a contagem
+--     de linhas inseridas. Idempotente: rodar 2x devolve 0 da segunda vez.
+select public.enfileirar_relatorios_semanais();
+
+-- (c) Inspeciona a fila:
+select status, count(*) from public.cron_relatorios_fila group by 1;
+
+-- (d) Roda o dispatcher 1 vez (lote 5) e confirma o disparo via pg_net:
+select public.dispatch_relatorios_pendentes(5);
+
+-- (e) Verifica que as cartas vieram (idempotência por user_id/semana_inicio):
+select user_id, semana_inicio, created_at
+  from public.relatorios_semanais
+  order by created_at desc limit 10;
+
+-- (f) Aborta o cron rapidamente, se necessário:
+-- select cron.unschedule('kairo_dispatch_relatorios_pendentes');
+-- select cron.unschedule('kairo_enfileirar_relatorios_semanais');
+```
+
+> **Espalhamento** (documentado no cabeçalho de `09_cron_relatorios.sql`): dispatcher consome **50 por minuto** → ~3.000/h → 30.000 usuários em ~10h. Bem abaixo do rate limit típico da Anthropic e da concorrência da função. Ajustar via `dispatch_relatorios_pendentes(<N>)` no `cron.schedule` se o perfil de uso mudar.
 
 ---
 
@@ -112,10 +165,58 @@ Qualidade (Fase 05):
 
 ## 8. Capacidade Supabase (30k MAUs) — preenchido pelo PROMPT 4.4
 
-- [ ] Plano Pro/Team confirmado (Edge invocations, DB size, egress, auth MAU).
-- [ ] Acesso via PostgREST/REST nas Edge Functions (sem conexões diretas persistentes) — verificado.
-- [ ] Limpeza de objetos de Storage ao deletar conta documentada/agendada.
-- [ ] Backups/PITR habilitados.
+Dimensionamento de referência para 30k MAUs. Reaferir quando o ramp passar de 10k.
+
+### 8.1 Plano
+
+**Pro** atende a Fase 04. Subir para **Team** quando precisar de SSO, role-based access ou suporte com SLA — não há barreira técnica de 30k MAU no Pro.
+
+| Recurso | Estimativa 30k MAUs | Pro inclui | Margem |
+|---|---|---|---|
+| Auth MAU | 30.000 | 100.000 | folgada |
+| Edge Function invocations / mês | ~1.3M (mentor-chat ~1M, relatorio-semanal ~120k, dispatcher ~30k POSTs) | 2M | ~50% |
+| DB size (ano 1) | ~35 GB (mensagens dominantes; ver §8.5) | 8 GB | excedente cobrado a US$0.125/GB·mês |
+| Egress | ~60 GB/mês (avatares) | 250 GB | folgada |
+| Storage | ~6 GB (30k × ~200 KB de avatar médio) | 100 GB | folgada |
+
+> Médias derivadas das premissas da Fase 04 §1. Calibrar com `uso_ia` e `pg_stat_*` quando real >5k MAUs.
+
+- [ ] **Plano Pro confirmado** no Project Settings → Billing.
+- [ ] Cap de gasto habilitado (ver §9) — defesa contra spike de DB/egress.
+
+### 8.2 Connection pooling — verificado
+
+Edge Functions acessam o banco **exclusivamente via `@supabase/supabase-js` → PostgREST** (HTTP/REST). Nenhuma `pg.Client`/`postgres` direta com conexão persistente. Verificado em:
+- [supabase/functions/mentor-chat/index.ts](../supabase/functions/mentor-chat/index.ts)
+- [supabase/functions/relatorio-semanal/index.ts](../supabase/functions/relatorio-semanal/index.ts)
+
+PostgREST faz pooling do lado do Supabase; cada chamada HTTP do Function gasta uma conexão por ~ms e devolve. Não há risco de esgotar `max_connections` mesmo no spike de cron (50 req/min do dispatcher + tráfego de usuário).
+
+- [x] Confirmado: zero conexão direta persistente nas Edge Functions.
+
+### 8.3 Storage — limpeza ao deletar conta
+
+O cascade de `auth.users` apaga linhas em `profiles`, `mensagens`, `praticas`, `pratica_completadas`, `reflexoes`, `relatorios_semanais`, `uso_ia`, `cron_relatorios_fila` (todas referenciam `auth.users(id) on delete cascade`). **Mas objetos do bucket `profire` (avatares) NÃO são apagados por cascade SQL** — Storage é S3, não está no banco.
+
+Hoje:
+- `BancoAvatar.remover()` ([lib/core/banco.dart:110](../lib/core/banco.dart#L110)) apaga o arquivo no fluxo de "remover avatar" pela UI.
+- Não há cleanup automático na rota de deletar a conta inteira.
+
+- [ ] **TODO antes do go-live**: trigger SQL em `auth.users` (ou Edge Function admin) que, ao deletar usuário, lista e remove `profire/<user_id>/*` via Storage API. Caminho mínimo: Edge Function `delete-user` (service role) que faz `supabase.storage.from('profire').list('<user_id>/')` + `remove(...)` antes do `auth.admin.deleteUser(...)`. Fluxo da UI passa por essa função.
+- [ ] Política de tamanho do avatar definida no upload (já hoje: aceita qualquer tamanho — adicionar limite de ~2 MB no cliente para conter egress/storage).
+
+### 8.4 Backups / PITR
+
+- [ ] **Daily backups** habilitados (default no Pro — confirmar em Project Settings → Database → Backups).
+- [ ] **Point-in-Time Recovery (PITR)** habilitado antes do go-live (add-on pago no Pro). Justificativa: a tabela `relatorios_semanais` é conteúdo único gerado por IA — perda de 24h de backup diário pode significar perda de cartas que custaram chamadas pagas à Anthropic e que o usuário esperava ler.
+
+### 8.5 Retenção e crescimento de tabela (follow-up pós-Fase 04)
+
+A maior fonte de crescimento é `public.mensagens` (~22 GB/ano no cenário 30k MAUs). Não é desta fase, mas registrar:
+
+- [ ] Decidir, antes do ano 2, política de retenção de `mensagens` (ex.: manter 12 meses no quente; arquivar/deletar mais antigo). O Mentor não usa histórico > N msgs no contexto — não há perda funcional.
+- [ ] `uso_ia` cresce ~2 GB/ano; manter integralmente (auditoria de custo retroativa vale mais que o GB).
+- [ ] `cron_relatorios_fila` cresce ~1.5M linhas/ano. Adicionar limpeza periódica de linhas `status='enviado'` > 90 dias na Fase 05 ou via cron extra.
 
 ---
 
