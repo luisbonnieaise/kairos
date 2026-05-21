@@ -1,0 +1,62 @@
+# CI mínima do Kairo.
+#
+# Roda em todo push e PR. NÃO faz deploy — deploy é manual via runbook
+# (docs/06-runbook-deploy.md), sem credenciais neste workflow.
+#
+# Dois jobs paralelos:
+#   • flutter:  analyze + test  (lógica pura do client: datas, premium)
+#   • deno:     test            (lógica pura das Edge Functions: validação,
+#                                parsing da carta, decisão de modelo)
+#
+# Versões fixadas para reprodutibilidade. Subir flutter-version exige rodar
+# `flutter pub get` localmente antes para detectar incompatibilidades.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  flutter:
+    name: Flutter (analyze + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.0'
+          channel: stable
+          cache: true
+
+      # .env é exigido por flutter_dotenv em main.dart; CI não precisa de URL
+      # real (testes são de lógica pura), então criamos um placeholder.
+      - name: Stub .env para o analyzer
+        run: |
+          echo "SUPABASE_URL=https://example.supabase.co" >  .env
+          echo "SUPABASE_KEY=stub-anon-key"               >> .env
+
+      - run: flutter pub get
+      # `flutter analyze` retorna 1 em qualquer issue por padrão; usamos
+      # --no-fatal-infos para que lints info pré-existentes não falhem o CI,
+      # mantendo warnings/errors como bloqueantes. Quando o débito de lints
+      # info for zerado, remover essa flag.
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test
+
+  deno:
+    name: Deno (test das Edge Functions)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # Sem permissões — os testes em _shared/ são puros (sem rede/disco).
+      - name: deno test (lógica pura compartilhada)
+        run: deno test supabase/functions/_shared/

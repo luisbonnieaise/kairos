@@ -58,3 +58,6 @@ flutter_*.png
 # Documentos de estratégia/planejamento local (não versionar)
 docs/Kairo-Estrategia-Pagamentos.pdf
 docs/_pdf_build/
+
+# Supabase CLI (lixo local versionado por engano)
+supabase/.temp/

@@ -13,6 +13,7 @@
 // console.error (logs do Supabase, acessíveis ao operador).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0';
+import { decidirModelo } from '../_shared/validacao.ts';
 
 function sistemaBase(idioma: string, contagemMsgsUsuario: number): string {
   const lingua = {
@@ -80,8 +81,7 @@ TONE EXAMPLES (translated to ${lingua} mentally)
 ${blocoFechamento}`;
 }
 
-const MODELO_HAIKU  = 'claude-haiku-4-5-20251001';
-const MODELO_SONNET = 'claude-sonnet-4-6';
+// (decidirModelo importado de _shared/validacao.ts; ele encapsula MODELO_HAIKU/SONNET)
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -219,7 +219,7 @@ Deno.serve(async (req: Request) => {
       console.error('Erro ao avaliar is_premium:', premiumErr.message);
     }
     const premium = premiumData === true;
-    const modelo = (premium && prefereSonnet) ? MODELO_SONNET : MODELO_HAIKU;
+    const modelo = decidirModelo(premium, prefereSonnet);
 
     // ── Rate limit não-burlável: conta o ledger uso_ia (escrito só por esta
     // função via service role), não a tabela mensagens preenchida pelo client.

@@ -27,8 +27,13 @@
 // O secret nunca deve ser logado nem exposto em erro ao client.
 
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0';
-
-const MODELO_SONNET = 'claude-sonnet-4-6';
+import {
+  ISO_DATE,
+  UUID_RE,
+  MODELO_SONNET,
+  validarSemanaInicio,
+  extrairCarta,
+} from '../_shared/validacao.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -102,26 +107,7 @@ function calcularSemanaUTC(): { dataInicio: string; dataFim: string } {
   return { dataInicio: dataStringUTC(inicio), dataFim: dataStringUTC(fim) };
 }
 
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const UUID_RE  = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-// Validação de semana_inicio — defesa contra custo ilimitado.
-// Convenção do app (lib/telas/biblioteca.dart::_semanaInicioAtual): semana_fim
-// é o domingo mais recente; semana_inicio = domingo - 6 dias → SEMPRE uma
-// SEGUNDA-FEIRA. Em UTC, segunda = getUTCDay() === 1.
-// Regras: formato ISO, ser segunda-feira, não estar no futuro nem mais de
-// 366 dias no passado. Retorna a data normalizada ou null se inválida.
-function validarSemanaInicio(s: string): string | null {
-  if (!ISO_DATE.test(s)) return null;
-  const d = new Date(`${s}T12:00:00Z`); // meio-dia UTC elimina ambiguidade de DST
-  if (Number.isNaN(d.getTime())) return null;
-  if (d.getUTCDay() !== 1) return null; // não é segunda-feira
-
-  const agora = Date.now();
-  if (d.getTime() > agora) return null; // futuro
-  if (agora - d.getTime() > 366 * 24 * 60 * 60 * 1000) return null; // > 366 dias atrás
-  return s;
-}
+// (ISO_DATE, UUID_RE, validarSemanaInicio importados de _shared/validacao.ts)
 
 // Resposta JSON utilitária.
 function jsonResp(body: unknown, status = 200): Response {
@@ -311,20 +297,11 @@ Agora escreva a carta semanal seguindo a estrutura JSON.`;
     console.error('Falha ao gravar uso_ia:', ledgerErr.message);
   }
 
+  // Extrai/valida estrutura da carta (função pura — testada em _shared).
   const textoCru = claudeData.content[0].text as string;
-
-  // Extrai JSON da resposta (caso venha com texto extra)
-  const matchJson = textoCru.match(/\{[\s\S]*\}/);
-  if (!matchJson) {
-    console.error('Relatório sem JSON na resposta do modelo:', textoCru.slice(0, 500));
-    return jsonResp({ error: 'relatorio_erro' }, 502);
-  }
-
-  let relatorio: { observacoes: string; padroes: string; conquistas: string; pergunta: string };
-  try {
-    relatorio = JSON.parse(matchJson[0]);
-  } catch {
-    console.error('Relatório com JSON inválido:', matchJson[0].slice(0, 500));
+  const relatorio = extrairCarta(textoCru);
+  if (!relatorio) {
+    console.error('Carta do modelo sem JSON válido:', textoCru.slice(0, 500));
     return jsonResp({ error: 'relatorio_erro' }, 502);
   }
 

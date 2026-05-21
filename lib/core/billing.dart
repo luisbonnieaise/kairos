@@ -63,9 +63,11 @@ class Billing {
 
       _statusBruto = status;
       _periodoFim = fim;
-      final ativo = (status == 'active' || status == 'trialing')
-          && fim != null
-          && fim.isAfter(DateTime.now());
+      final ativo = derivarPremium(
+        status: status,
+        periodoFim: fim,
+        agora: DateTime.now(),
+      );
       _cache = ativo;
       return ativo;
     } catch (e) {
@@ -133,5 +135,19 @@ class Billing {
     _cache = null;
     _periodoFim = null;
     _statusBruto = null;
+  }
+
+  /// Função pura — testável sem mockar Supabase. Mantém paridade EXATA com
+  /// `public.is_premium()` no banco: premium = status in (active, trialing)
+  /// AND current_period_end > now. Demais status (past_due/canceled/incomplete/
+  /// unpaid/paused/none) e período expirado NÃO concedem premium.
+  static bool derivarPremium({
+    required String? status,
+    required DateTime? periodoFim,
+    required DateTime agora,
+  }) {
+    if (status != 'active' && status != 'trialing') return false;
+    if (periodoFim == null) return false;
+    return periodoFim.isAfter(agora);
   }
 }

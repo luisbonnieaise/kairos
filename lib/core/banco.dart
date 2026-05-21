@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
+import 'datas.dart';
 
 // ── PERFIL DO USUÁRIO ────────────────────────────────────────────────────────
 
@@ -220,18 +221,9 @@ class BancoMensagens {
 // ── PRÁTICAS ─────────────────────────────────────────────────────────────────
 
 class BancoPraticas {
-  static String _hoje() {
-    final d = DateTime.now();
-    return '${d.year.toString().padLeft(4, '0')}-'
-        '${d.month.toString().padLeft(2, '0')}-'
-        '${d.day.toString().padLeft(2, '0')}';
-  }
-
-  static String _dataString(DateTime d) {
-    return '${d.year.toString().padLeft(4, '0')}-'
-        '${d.month.toString().padLeft(2, '0')}-'
-        '${d.day.toString().padLeft(2, '0')}';
-  }
+  // Funções de data são puras e vivem em core/datas.dart (testáveis sem
+  // mockar Supabase). Mantidas como wrappers locais por compat de chamada.
+  static String _hoje() => formatarDataYMD(DateTime.now());
 
   static Future<List<Map<String, dynamic>>> carregar() async {
     final user = supabase.auth.currentUser;
@@ -328,32 +320,23 @@ class BancoPraticas {
         .eq('data', _hoje());
   }
 
-  // Retorna lista [true, false, true, ...] dos últimos 7 dias
-  // Posição 0 = hoje, posição 6 = 6 dias atrás
+  // Retorna 7 flags em ordem cronológica ASCENDENTE:
+  // posição 0 = 6 dias atrás, posição 6 = hoje.
+  // (Consumidores em dojo.dart e biblioteca.dart dependem dessa ordem.)
   static Future<List<bool>> ultimos7Dias(String praticaId) async {
     final user = supabase.auth.currentUser;
     if (user == null) return List.filled(7, false);
 
     final agora = DateTime.now();
-    final inicio = DateTime(agora.year, agora.month, agora.day)
-        .subtract(const Duration(days: 6));
-
     final dados = await supabase
         .from('pratica_completadas')
         .select('data')
         .eq('user_id', user.id)
         .eq('pratica_id', praticaId)
-        .gte('data', _dataString(inicio));
+        .gte('data', inicioJanela7Dias(agora));
 
     final datasFeitas = dados.map<String>((r) => r['data'] as String).toSet();
-
-    final resultado = <bool>[];
-    for (int i = 6; i >= 0; i--) {
-      final d = DateTime(agora.year, agora.month, agora.day)
-          .subtract(Duration(days: i));
-      resultado.add(datasFeitas.contains(_dataString(d)));
-    }
-    return resultado;
+    return ultimos7DiasFlags(agora: agora, datasFeitas: datasFeitas);
   }
 }
 

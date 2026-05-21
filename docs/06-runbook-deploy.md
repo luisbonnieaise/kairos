@@ -49,6 +49,18 @@ supabase functions deploy stripe-webhook --no-verify-jwt   # <- obrigatório
 
 > `stripe-webhook` **precisa** de `--no-verify-jwt` (Stripe não envia JWT Supabase; a segurança é a verificação de assinatura). As demais ficam com verify-jwt padrão.
 
+### 3.1 Testes locais (sem rede)
+
+A lógica pura compartilhada vive em [supabase/functions/_shared/validacao.ts](../supabase/functions/_shared/validacao.ts) (validação de `semana_inicio`, parsing da carta, decisão de modelo). Antes de deployar:
+
+```bash
+deno test supabase/functions/_shared/validacao_test.ts
+# ou todos:
+deno test supabase/functions/
+```
+
+Nenhum permission flag é necessário (testes não tocam rede/disco). Se o `deno` local não estiver instalado, o mesmo job roda no CI ([.github/workflows/ci.yml](../.github/workflows/ci.yml)).
+
 ---
 
 ## 4. Configuração Stripe (painel)
@@ -241,8 +253,8 @@ Escala (Fase 04):
 - [ ] Plano Supabase adequado a 30k MAUs (seção 8).
 
 Qualidade (Fase 05):
-- [ ] CI verde (`flutter analyze`/`test`, `deno test`).
-- [ ] `supabase/.temp/` fora do git; README real.
+- [ ] **CI verde** ([.github/workflows/ci.yml](../.github/workflows/ci.yml)) no commit que vai a produção: `flutter analyze --no-fatal-infos` + `flutter test` + `deno test supabase/functions/_shared/`. Sem credenciais no workflow; sem deploy automático — deploy continua manual via §3 deste runbook.
+- [ ] `supabase/.temp/` fora do git; README raiz real (não-placeholder).
 
 ---
 

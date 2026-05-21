@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/kairo_tema.dart';
 import '../core/banco.dart';
+import '../core/datas.dart';
 import '../core/i18n.dart';
 import '../core/tutorial.dart';
 import '../main.dart';
@@ -60,22 +61,9 @@ class _TelaBibliotecaState extends State<TelaBiblioteca> {
   }
 
   /// semana_inicio da carta atual (segunda) no formato YYYY-MM-DD.
-  /// Mesma lógica do servidor: semana_fim = domingo mais recente, semana_inicio = -6 dias.
-  String _semanaInicioAtual() {
-    final agora = DateTime.now();
-    int diasParaVoltar;
-    if (agora.weekday == DateTime.sunday) {
-      diasParaVoltar = 0;
-    } else {
-      diasParaVoltar = agora.weekday; // segunda=1, terça=2, etc.
-    }
-    final fim = DateTime(agora.year, agora.month, agora.day)
-        .subtract(Duration(days: diasParaVoltar));
-    final inicio = fim.subtract(const Duration(days: 6));
-    return '${inicio.year.toString().padLeft(4, '0')}-'
-        '${inicio.month.toString().padLeft(2, '0')}-'
-        '${inicio.day.toString().padLeft(2, '0')}';
-  }
+  /// Lógica em core/datas.dart::semanaInicioISO (testável, mesma convenção
+  /// do servidor: semana_fim = domingo mais recente, semana_inicio = -6 dias).
+  String _semanaInicioAtual() => semanaInicioISO(DateTime.now());
 
   void _mostrarMensagemEspera() {
     if (!mounted) return;
