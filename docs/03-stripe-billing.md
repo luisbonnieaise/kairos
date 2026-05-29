@@ -1,5 +1,7 @@
 # 03 · Stripe — Billing & Premium
 
+> ⚠️ **PARCIALMENTE SUBSTITUÍDO pela Fase 07.** A decisão final do produto é **billing multiplataforma** (Stripe na web + Apple/Google IAP no app). Use [`07-billing-multiplataforma.md`](07-billing-multiplataforma.md) como spec vigente. Em particular: o Edge Function `stripe-checkout` **não é mais criado** (checkout vira rota server-side na `lp-kairo`), o paywall **não abre o navegador** (usa IAP) e `subscriptions` é **agnóstico de provider**. Os princípios de concorrência/idempotência e o gating do `mentor-chat` deste doc **permanecem válidos** e são reaproveitados pela Fase 07.
+
 **Prioridade 🔴 P0 (monetização) + dependência da Fase 01.** Implementa **Kairo Premium** via Stripe: schema de billing, checkout, **webhook idempotente e concorrente**, sincronização canônica e gating server-side ligado ao `is_premium()` da Fase 01.
 
 Pré-requisitos:

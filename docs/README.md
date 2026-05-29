@@ -29,6 +29,8 @@ Esta documentação é **executável**: cada fase tem objetivo, contexto, arquiv
 | 04 | [Escala para 30k MAUs](04-escala-30k.md) | Índices, carta semanal via cron, observabilidade, modelo de custo | 🟡 P1 | ☐ |
 | 05 | [Qualidade & Testes](05-qualidade-testes.md) | Testes da lógica crítica, CI, README, higiene de repo | 🟢 P2 | ☐ |
 | 06 | [Runbook de Deploy & Go-Live](06-runbook-deploy.md) | Matriz de secrets, ordem de deploy, checklist final, rollback | Operação | ☐ |
+| 07 | [Billing Multiplataforma](07-billing-multiplataforma.md) | **Spec vigente:** Stripe (web) + Apple IAP + Google Play, entitlement único, 3 webhooks idempotentes, conformidade | 🔴 P0 | ☐ |
+| 08 | [Guia de Consoles (Luis)](08-guia-consoles-luis.md) | Passo a passo nos painéis Stripe/Apple/Google/Supabase: produtos, API keys, webhooks/eventos, matriz de secrets | Operação | ☐ |
 
 ---
 
@@ -37,15 +39,16 @@ Esta documentação é **executável**: cada fase tem objetivo, contexto, arquiv
 ```
 00 (ler)
  └─> 01 (P0: blinda custo de IA)         ─┐
- └─> 03 (Stripe: monetização + gating)    ├─ podem ser feitas em paralelo por 2 pessoas
-      (03 depende de 01 para o gating)   ─┘
+ └─> 07 (Billing multiplataforma)         ├─ podem ser feitas em paralelo por 2 pessoas
+      (07 depende de 01 para o gating)   ─┘   (07 SUBSTITUI a parte de checkout da 03)
+ └─> 08 (Luis configura os consoles — pré-requisito p/ validar os webhooks da 07)
  └─> 02 (P1: hardening de auth/erros)
  └─> 04 (escala: cron, índices, observabilidade)
  └─> 05 (testes + higiene)
  └─> 06 (deploy + go-live checklist)
 ```
 
-**Dependência dura:** o gating de modelo Sonnet (Fase 03) reusa o ponto de decisão server-side criado na Fase 01. Faça a 01 antes da parte de gating da 03.
+**Dependência dura:** o gating de modelo Sonnet reusa o ponto de decisão server-side criado na Fase 01. Faça a 01 antes da parte de gating da 07. **O doc 03 foi parcialmente substituído pela Fase 07** (billing multiplataforma); siga a 07 como spec vigente e use a 03 apenas como referência dos princípios de concorrência/idempotência.
 
 ---
 
