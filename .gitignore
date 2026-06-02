@@ -54,3 +54,10 @@ flutter_*.png
 
 # Claude Code (configurações locais do agente)
 .claude/
+
+# Documentos de estratégia/planejamento local (não versionar)
+docs/Kairo-Estrategia-Pagamentos.pdf
+docs/_pdf_build/
+
+# Supabase CLI (lixo local versionado por engano)
+supabase/.temp/

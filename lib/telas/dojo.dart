@@ -323,14 +323,7 @@ class _ItemPratica extends StatelessWidget {
                   children: [
                     if (pratica.categoria.isNotEmpty) ...[
                       Text(
-                        switch (pratica.categoria) {
-                          'Mente'      => T.catMente,
-                          'Corpo'      => T.catCorpo,
-                          'Disciplina' => T.catDisciplina,
-                          'Relações'   => T.catRelacoes,
-                          'Trabalho'   => T.catTrabalho,
-                          _ => pratica.categoria,
-                        }.toUpperCase(),
+                        T.nomeCategoria(pratica.categoria).toUpperCase(),
                         style: KT.micro(),
                       ),
                       const SizedBox(height: 6),
@@ -426,7 +419,9 @@ class _BibliotecaPraticas extends StatefulWidget {
 }
 
 class _BibliotecaPraticasState extends State<_BibliotecaPraticas> {
-  String _categoriaAtiva = 'Mente';
+  // Enum ASCII estável; o que vai para o banco. A exibição passa por
+  // `T.nomeCategoria(...)` que traduz para o idioma atual.
+  String _categoriaAtiva = T.catKeyMente;
 
   void _abrirPersonalizada(BuildContext ctxPai) {
     HapticFeedback.lightImpact();
@@ -488,14 +483,7 @@ class _BibliotecaPraticasState extends State<_BibliotecaPraticas> {
                 padding: const EdgeInsets.symmetric(horizontal: 32),
                 children: _biblioteca.keys.map((cat) {
                   final ativo = cat == _categoriaAtiva;
-                  final nomeTraduzido = switch (cat) {
-                    'Mente'      => T.catMente,
-                    'Corpo'      => T.catCorpo,
-                    'Disciplina' => T.catDisciplina,
-                    'Relações'   => T.catRelacoes,
-                    'Trabalho'   => T.catTrabalho,
-                    _ => cat,
-                  };
+                  final nomeTraduzido = T.nomeCategoria(cat);
                   return Padding(
                     padding: const EdgeInsets.only(right: 24),
                     child: GestureDetector(
@@ -606,14 +594,7 @@ class _SheetPersonalizadaState extends State<_SheetPersonalizada> {
   final _nome = TextEditingController();
   final _duracao = TextEditingController();
 
-  String _categoriaTraduzida() => switch (widget.categoria) {
-        'Mente' => T.catMente,
-        'Corpo' => T.catCorpo,
-        'Disciplina' => T.catDisciplina,
-        'Relações' => T.catRelacoes,
-        'Trabalho' => T.catTrabalho,
-        _ => widget.categoria,
-      };
+  String _categoriaTraduzida() => T.nomeCategoria(widget.categoria);
 
   void _adicionar() {
     final nome = _nome.text.trim();

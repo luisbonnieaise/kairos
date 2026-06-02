@@ -6,9 +6,10 @@ import '../core/banco.dart';
 import '../core/notificacoes.dart';
 import '../core/i18n.dart';
 import '../core/tutorial.dart';
+import '../core/billing.dart';
 import '../widgets/kairo_avatar.dart';
 import '../main.dart';
-import 'home.dart';
+import 'premium.dart';
 
 class TelaPerfil extends StatefulWidget {
   const TelaPerfil({super.key});
@@ -161,21 +162,13 @@ class _TelaPerfilState extends State<TelaPerfil> {
 
     if (escolhido == null || escolhido == T.idioma) return;
 
-    // Salva local e no perfil
+    // Salva local (dispara T.idiomaNotifier → MaterialApp reconstrói toda a
+    // árvore) e persiste no perfil para que o backend (Mentor/Carta) também
+    // veja o novo idioma. Não precisa mais reiniciar a navegação: o
+    // ValueListenableBuilder em main.dart já refaz o rebuild com a ValueKey
+    // do MaterialApp incluindo o idioma, e os getters de `T.*` re-resolvem.
     await T.definir(escolhido);
     await BancoPerfil.atualizar(idioma: escolhido);
-
-    if (!mounted) return;
-    // Reinicia a navegação na Home pra recarregar os textos no novo idioma
-    Navigator.of(context).pushAndRemoveUntil(
-      PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const TelaHome(),
-        transitionsBuilder: (_, anim, __, child) =>
-            FadeTransition(opacity: anim, child: child),
-        transitionDuration: const Duration(milliseconds: 600),
-      ),
-      (route) => false,
-    );
   }
 
   Future<void> _escolherHorario() async {
@@ -417,6 +410,15 @@ class _TelaPerfilState extends State<TelaPerfil> {
                     KT.divisor(),
                     const SizedBox(height: 32),
 
+                    // Kairo Premium (Fase 03)
+                    Text(T.premiumTitulo, style: KT.micro()),
+                    const SizedBox(height: 12),
+                    _LinhaPremium(),
+
+                    const SizedBox(height: 40),
+                    KT.divisor(),
+                    const SizedBox(height: 32),
+
                     Text(T.identidadeLabel, style: KT.micro()),
                     const SizedBox(height: 12),
 
@@ -630,6 +632,76 @@ class _TelaPerfilState extends State<TelaPerfil> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── LINHA DO KAIRO PREMIUM (status + entrada do paywall) ─────────────────────
+
+class _LinhaPremium extends StatefulWidget {
+  @override
+  State<_LinhaPremium> createState() => _LinhaPremiumState();
+}
+
+class _LinhaPremiumState extends State<_LinhaPremium> {
+  bool _carregando = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _carregar();
+  }
+
+  Future<void> _carregar() async {
+    await Billing.instance.refresh();
+    if (!mounted) return;
+    setState(() => _carregando = false);
+  }
+
+  Future<void> _abrirPaywall() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const TelaPremium()),
+    );
+    if (!mounted) return;
+    // Pode ter mudado de estado (assinou/cancelou) — re-render.
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final billing = Billing.instance;
+    final premium = billing.cachePremium == true;
+    final periodoFim = billing.periodoFim;
+
+    return GestureDetector(
+      onTap: _abrirPaywall,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _carregando
+                      ? T.carregando
+                      : (premium ? T.premiumAtivo : T.premiumGratuito),
+                  style: KT.body(cor: premium ? KC.kin : null),
+                ),
+              ),
+              Icon(Icons.chevron_right, size: 18, color: KC.fumo),
+            ],
+          ),
+          if (premium && periodoFim != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              '${T.premiumAtivoAte} ${T.formatarData(periodoFim)}',
+              style: KT.caption(),
+            ),
+          ],
+        ],
       ),
     );
   }

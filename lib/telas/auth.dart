@@ -23,6 +23,25 @@ class _TelaAuthState extends State<TelaAuth> {
   bool _carregando = false;
   String? _erro;
 
+  // Estado "aguardando confirmação" — ativado quando o signup retorna user
+  // sem session (i.e., confirmação de e-mail está LIGADA no Supabase Auth).
+  // Quando true, a Scaffold renderiza a sub-vista de "confirme seu e-mail"
+  // e nenhuma chamada autenticada é disparada (não há sessão).
+  bool _aguardandoConfirmacao = false;
+  String _emailParaConfirmacao = '';
+
+  // Estado "login bloqueado por e-mail não confirmado": mostra ação extra
+  // de reenviar o link. Só fica true após signInWithPassword devolver o
+  // AuthApiException 'email not confirmed'.
+  bool _podeReenviarConfirmacao = false;
+  bool _reenviando = false;
+
+  // Senha forte (P2.2): mín 8 caracteres com letra e número.
+  static final _regexLetra  = RegExp(r'[A-Za-z]');
+  static final _regexNumero = RegExp(r'\d');
+  bool _senhaForte(String s) =>
+      s.length >= 8 && _regexLetra.hasMatch(s) && _regexNumero.hasMatch(s);
+
   Future<void> _autenticar() async {
     final email = _email.text.trim();
     final senha = _senha.text;
@@ -32,8 +51,8 @@ class _TelaAuthState extends State<TelaAuth> {
       return;
     }
 
-    if (senha.length < 6) {
-      setState(() => _erro = T.senhaMin6);
+    if (!_senhaForte(senha)) {
+      setState(() => _erro = T.senhaRegra);
       return;
     }
 
@@ -46,12 +65,29 @@ class _TelaAuthState extends State<TelaAuth> {
     setState(() {
       _carregando = true;
       _erro = null;
+      _podeReenviarConfirmacao = false;
     });
 
     try {
       if (widget.ehCadastro) {
-        await supabase.auth.signUp(email: email, password: senha);
-        // Salva apenas o idioma escolhido (o nome será perguntado no onboarding)
+        final resp = await supabase.auth.signUp(email: email, password: senha);
+
+        // Supabase Auth com "Confirm email" LIGADO: signUp devolve user mas
+        // session == null — a sessão só nasce após o usuário clicar no link.
+        // NÃO chame BancoPerfil.atualizar() aqui (não há sessão; a inserção
+        // falharia silenciosamente por RLS) e NÃO navegue para o onboarding.
+        if (resp.session == null && resp.user != null) {
+          if (!mounted) return;
+          setState(() {
+            _aguardandoConfirmacao = true;
+            _emailParaConfirmacao = email;
+            _carregando = false;
+          });
+          return;
+        }
+
+        // Caminho com "Confirm email" DESLIGADO: já há sessão, prossegue
+        // como antes — salva o idioma escolhido e vai para o onboarding.
         try {
           await BancoPerfil.atualizar(idioma: T.idioma);
         } catch (_) {}
@@ -68,11 +104,18 @@ class _TelaAuthState extends State<TelaAuth> {
         );
       } else {
         await supabase.auth.signInWithPassword(email: email, password: senha);
-        // Sincroniza o idioma do perfil (caso o usuário tenha trocado de aparelho)
+        // Sincroniza o idioma do perfil (caso o usuário tenha trocado de aparelho).
+        // Se o perfil veio sem idioma — pode ter sido criado em signup com
+        // Confirm Email ligado, que não chega a chamar `atualizar(idioma:)` —
+        // persistimos o atual. Sem isso, o backend (Mentor/Carta) cai sempre
+        // no default 'pt' e o usuário vê resposta em PT mesmo com app em outro
+        // idioma.
         try {
           final perfil = await BancoPerfil.carregar();
           final idiomaSalvo = perfil?['idioma'] as String?;
-          if (idiomaSalvo != null && idiomaSalvo != T.idioma) {
+          if (idiomaSalvo == null || idiomaSalvo.isEmpty) {
+            await BancoPerfil.atualizar(idioma: T.idioma);
+          } else if (idiomaSalvo != T.idioma) {
             await T.definir(idiomaSalvo);
           }
         } catch (_) {}
@@ -89,6 +132,17 @@ class _TelaAuthState extends State<TelaAuth> {
       }
     } on AuthException catch (e) {
       if (!mounted) return;
+      final msg = e.message.toLowerCase();
+      // E-mail não confirmado no login: troca a UX para mostrar o botão de
+      // reenviar (em vez de só uma mensagem genérica de credencial errada).
+      if (msg.contains('email not confirmed') || msg.contains('not confirmed')) {
+        setState(() {
+          _erro = T.emailNaoConfirmado;
+          _podeReenviarConfirmacao = true;
+          _carregando = false;
+        });
+        return;
+      }
       setState(() {
         _erro = _traduzirErro(e.message);
         _carregando = false;
@@ -98,6 +152,40 @@ class _TelaAuthState extends State<TelaAuth> {
       setState(() {
         _erro = T.erroGenerico;
         _carregando = false;
+      });
+    }
+  }
+
+  Future<void> _reenviarConfirmacao() async {
+    final email = _emailParaConfirmacao.isNotEmpty
+        ? _emailParaConfirmacao
+        : _email.text.trim();
+    if (email.isEmpty) return;
+
+    setState(() {
+      _reenviando = true;
+      _erro = null;
+    });
+    try {
+      await supabase.auth.resend(type: OtpType.signup, email: email);
+      if (!mounted) return;
+      // Mensagem positiva curta. Mantém _podeReenviarConfirmacao true caso
+      // o usuário queira reenviar novamente após a janela do Supabase.
+      setState(() {
+        _erro = T.confirmacaoReenviada;
+        _reenviando = false;
+      });
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _erro = _traduzirErro(e.message);
+        _reenviando = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _erro = T.erroGenerico;
+        _reenviando = false;
       });
     }
   }
@@ -144,8 +232,110 @@ class _TelaAuthState extends State<TelaAuth> {
     super.dispose();
   }
 
+  // Sub-vista pós-signup quando "Confirm email" está LIGADO no Supabase Auth.
+  // Mesma linguagem visual de _SheetRecuperarSenha: titulo em KT.titulo(),
+  // corpo em bodySerif/caption, botão "voltar ao login" no estilo outlined.
+  Widget _construirAguardandoConfirmacao() {
+    return Scaffold(
+      backgroundColor: KC.sumi,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 16),
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: Icon(Icons.arrow_back, color: KC.cinza, size: 22),
+                padding: EdgeInsets.zero,
+                alignment: Alignment.centerLeft,
+              ),
+              const SizedBox(height: 48),
+
+              Text(T.confirmeSeuEmail, style: KT.micro(cor: KC.kin)),
+              const SizedBox(height: 16),
+              Text(T.enviamosConfirmacao, style: KT.bodySerif()),
+              const SizedBox(height: 16),
+              if (_emailParaConfirmacao.isNotEmpty)
+                Text(_emailParaConfirmacao, style: KT.body(cor: KC.washi)),
+
+              if (_erro != null) ...[
+                const SizedBox(height: 24),
+                Text(_erro!, style: KT.caption(cor: KC.aka)),
+              ],
+
+              const Spacer(),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _reenviando ? null : _reenviarConfirmacao,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: KC.washi,
+                    foregroundColor: KC.sumi,
+                    disabledBackgroundColor: KC.grafite,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: _reenviando
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.5,
+                            color: KC.fundo,
+                          ),
+                        )
+                      : Text(T.reenviarConfirmacao, style: KT.body(cor: KC.fundo)),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () {
+                    // Volta ao login (modo cadastro -> modo login).
+                    Navigator.pushReplacement(
+                      context,
+                      PageRouteBuilder(
+                        pageBuilder: (_, __, ___) =>
+                            const TelaAuth(ehCadastro: false),
+                        transitionDuration: Duration.zero,
+                      ),
+                    );
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: KC.washi,
+                    side: BorderSide(color: KC.grafite, width: 1),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: Text(T.voltarAoLogin, style: KT.body()),
+                ),
+              ),
+
+              const SizedBox(height: 32),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Sub-vista "Confirme seu e-mail" — aparece após signup quando o
+    // Supabase Auth está com confirmação ligada (response.session == null).
+    if (_aguardandoConfirmacao) return _construirAguardandoConfirmacao();
+
     final titulo = widget.ehCadastro ? T.criarConta : T.entrar;
     final botao = widget.ehCadastro ? T.criarConta : T.entrar;
     final linkOposto = widget.ehCadastro
@@ -250,6 +440,26 @@ class _TelaAuthState extends State<TelaAuth> {
               if (_erro != null) ...[
                 const SizedBox(height: 24),
                 Text(_erro!, style: KT.caption(cor: KC.aka)),
+              ],
+
+              // Login bloqueado por e-mail não confirmado: ação de reenvio
+              // do link. Aparece junto da mensagem de erro acima.
+              if (_podeReenviarConfirmacao && !widget.ehCadastro) ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: _reenviando ? null : _reenviarConfirmacao,
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text(
+                      _reenviando ? T.salvando : T.reenviarConfirmacao,
+                      style: KT.caption(cor: KC.kin),
+                    ),
+                  ),
+                ),
               ],
 
               if (!widget.ehCadastro) ...[

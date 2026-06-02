@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- Relaxa e Durma: mantém o áudio tocando com a tela desligada -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
     <!-- image_picker: acesso à galeria -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
@@ -38,6 +40,13 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- Deep link kairo:// (retorno do Stripe Checkout — Fase 03) -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="kairo"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
