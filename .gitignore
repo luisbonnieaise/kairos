@@ -50,6 +50,7 @@ flutter_*.png
 
 # Secrets — nunca commitar
 .env
+env
 *.key
 
 # Claude Code (configurações locais do agente)
