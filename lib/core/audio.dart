@@ -24,10 +24,13 @@ class KairoAudio {
       audioFocus: AndroidAudioFocus.gainTransientMayDuck,
     ),
     iOS: AudioContextIOS(
+      // `ambient` já mistura com o áudio de outros apps e é silenciada pela
+      // trava de tela / botão de silêncio — exatamente o que queremos aqui.
+      // NÃO passar `mixWithOthers`: o audioplayers só aceita essa opção com
+      // `playback`/`playAndRecord`/`multiRoute` e dispara uma assertion (que
+      // fazia o precarregar() falhar no boot) se combinada com `ambient`.
       category: AVAudioSessionCategory.ambient,
-      options: const {
-        AVAudioSessionOptions.mixWithOthers,
-      },
+      options: const {},
     ),
   );
 
