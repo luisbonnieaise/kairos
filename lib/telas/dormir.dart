@@ -288,7 +288,9 @@ class _TelaDormirState extends State<TelaDormir>
     )..repeat(reverse: true);
 
     Future.delayed(const Duration(milliseconds: 400), () {
-      if (!mounted) return;
+      // Não inicia o áudio se a sessão já está sendo encerrada (ex.: toque
+      // longo nos primeiros 400ms) — evitaria um "blip" de som no fade-out.
+      if (!mounted || _encerrando) return;
       KairoAudio.tocarDormir(widget.arquivo, volume: _volume);
     });
 

@@ -1,5 +1,10 @@
+import 'dart:io' show Platform;
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+
+import 'i18n.dart';
 
 class KairoAudio {
   static final _orin = AudioPlayer();
@@ -7,6 +12,7 @@ class KairoAudio {
   static final _dormir = AudioPlayer();
   static bool _configurado = false;
   static bool _dormirConfigurado = false;
+  static bool _fgInicializado = false;
 
   /// Contexto de áudio padrão do app: mistura com outros apps e NÃO toca com a
   /// tela bloqueada (categoria `ambient` no iOS). Fonte única para orin/ambiente
@@ -77,6 +83,62 @@ class KairoAudio {
   // Player dedicado que continua tocando com a tela desligada / app em segundo
   // plano. Usa categoria `playback` no iOS e mantém a CPU acordada no Android.
 
+  // Serviço em primeiro plano (Android): mantém o processo vivo para o áudio
+  // não ser morto pelo SO com o app em segundo plano / tela apagada. No iOS o
+  // áudio em segundo plano já é garantido pela categoria `playback` + o modo
+  // `audio` no Info.plist, então o serviço só roda no Android.
+  static void _inicializarFg() {
+    if (_fgInicializado) return;
+    FlutterForegroundTask.init(
+      androidNotificationOptions: AndroidNotificationOptions(
+        channelId: 'kairo_dormir',
+        channelName: T.dormirNotifTitulo,
+        channelImportance: NotificationChannelImportance.LOW,
+        priority: NotificationPriority.LOW,
+        onlyAlertOnce: true,
+      ),
+      iosNotificationOptions: const IOSNotificationOptions(
+        showNotification: false,
+        playSound: false,
+      ),
+      foregroundTaskOptions: ForegroundTaskOptions(
+        eventAction: ForegroundTaskEventAction.nothing(),
+        autoRunOnBoot: false,
+        autoRunOnMyPackageReplaced: false,
+        allowWakeLock: true,
+        allowWifiLock: false,
+      ),
+    );
+    _fgInicializado = true;
+  }
+
+  static Future<void> _iniciarServicoFg() async {
+    if (!Platform.isAndroid) return;
+    try {
+      _inicializarFg();
+      if (await FlutterForegroundTask.isRunningService) return;
+      await FlutterForegroundTask.startService(
+        serviceId: 808,
+        serviceTypes: const [ForegroundServiceTypes.mediaPlayback],
+        notificationTitle: T.dormirNotifTitulo,
+        notificationText: T.dormirNotifTexto,
+      );
+    } catch (e) {
+      debugPrint('Erro ao iniciar serviço de sono: $e');
+    }
+  }
+
+  static Future<void> _pararServicoFg() async {
+    if (!Platform.isAndroid) return;
+    try {
+      if (await FlutterForegroundTask.isRunningService) {
+        await FlutterForegroundTask.stopService();
+      }
+    } catch (e) {
+      debugPrint('Erro ao parar serviço de sono: $e');
+    }
+  }
+
   static Future<void> _configurarDormir() async {
     if (_dormirConfigurado) return;
     try {
@@ -105,6 +167,7 @@ class KairoAudio {
   static Future<void> tocarDormir(String arquivo, {double volume = 0.7}) async {
     try {
       await _configurarDormir();
+      await _iniciarServicoFg();
       await _dormir.stop();
       await _dormir.play(AssetSource('sounds/$arquivo'), volume: volume);
     } catch (e) {
@@ -124,6 +187,7 @@ class KairoAudio {
   static Future<void> pararDormir() async {
     try {
       await _dormir.stop();
+      await _pararServicoFg();
       // Restaura a sessão de áudio compartilhada (iOS) para a categoria padrão.
       // Sem isso, o sino/ambiente continuariam sob `playback` depois de dormir,
       // pois `precarregar()` não reconfigura uma segunda vez.
