@@ -304,243 +304,318 @@ class _AbaPatioState extends State<_AbaPatio> {
     }
   }
 
+  void _abrir(Widget tela) {
+    HapticFeedback.lightImpact();
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, _, _) => tela,
+        transitionsBuilder: (_, anim, _, child) =>
+            FadeTransition(opacity: anim, child: child),
+        transitionDuration: const Duration(milliseconds: 320),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final concluidos = _habitos.where((h) => h.feito).length;
     final total = _habitos.length;
+    final temHabitos = !_carregando && _habitos.isNotEmpty;
 
-    // viewPadding.bottom = safe area físico (não afetado pelo extendBody)
-    // 100 = altura da navbar (~64) + gap (12) + folga (24)
-    final navBarClearance = MediaQuery.of(context).viewPadding.bottom + 100;
+    // viewPadding.bottom = safe area físico (não afetado pelo extendBody).
+    // navbar (~64) + gap (12) + folga generosa (52) — para os cards nunca
+    // encostarem na barra de navegação flutuante.
+    final navBarClearance = MediaQuery.of(context).viewPadding.bottom + 128;
 
-    return RefreshIndicator(
-      color: KC.acento,
-      backgroundColor: KC.fundo,
-      onRefresh: _carregar,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(
-          24,
-          MediaQuery.of(context).padding.top + 24,
-          24,
-          navBarClearance,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Cabeçalho: Avatar + saudação em linha ─────────────────────
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Avatar — toca para ir ao Perfil
-                GestureDetector(
-                  onTap: () async {
-                    HapticFeedback.lightImpact();
-                    await Navigator.push(
-                      context,
-                      PageRouteBuilder(
-                        pageBuilder: (_, _, _) => const TelaPerfil(),
-                        transitionsBuilder: (_, anim, _, child) =>
-                            FadeTransition(opacity: anim, child: child),
-                        transitionDuration: const Duration(milliseconds: 320),
-                      ),
-                    );
-                    if (mounted) await _carregar();
-                  },
-                  child: KairoAvatar(
-                    tamanho: 48,
-                    url: _avatarUrl,
-                    nome: _nomeUsuario,
-                    editavel: false,
-                  ),
+    // Tela estática: cabeçalho fixo no topo, cards de ação fixos na base e a
+    // lista de práticas ocupando o meio (rola internamente só se transbordar).
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        24,
+        MediaQuery.of(context).padding.top + 24,
+        24,
+        navBarClearance,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Cabeçalho: Avatar + saudação em linha ─────────────────────
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Avatar — toca para ir ao Perfil
+              GestureDetector(
+                onTap: () async {
+                  HapticFeedback.lightImpact();
+                  await Navigator.push(
+                    context,
+                    PageRouteBuilder(
+                      pageBuilder: (_, _, _) => const TelaPerfil(),
+                      transitionsBuilder: (_, anim, _, child) =>
+                          FadeTransition(opacity: anim, child: child),
+                      transitionDuration: const Duration(milliseconds: 320),
+                    ),
+                  );
+                  if (mounted) await _carregar();
+                },
+                child: KairoAvatar(
+                  tamanho: 48,
+                  url: _avatarUrl,
+                  nome: _nomeUsuario,
+                  editavel: false,
                 ),
+              ),
 
-                const SizedBox(width: 16),
+              const SizedBox(width: 16),
 
-                // Saudação + nome
-                Expanded(child: _buildCabecalhoTexto()),
-              ],
-            ),
+              // Saudação + nome
+              Expanded(child: _buildCabecalhoTexto()),
+            ],
+          ),
 
-            const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
-            // Frase do Mentor — italic com aspas, cor secundária
-            Text(
-              '"${T.mentorFoque}" — ${T.mentor}',
-              style: KT.bodyItalic(),
-            ),
+          // Frase do Mentor — italic com aspas, cor secundária
+          Text(
+            '"${T.mentorFoque}" — ${T.mentor}',
+            style: KT.bodyItalic(),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
 
-            const SizedBox(height: 32),
-            KT.divisor(),
-            const SizedBox(height: 24),
+          const SizedBox(height: 24),
+          KT.divisor(),
+          const SizedBox(height: 20),
 
-            // ── Seção Práticas ───────────────────────────────────────────
-            Text(T.praticasDeHoje, style: KT.titulo()),
-            const SizedBox(height: 6),
-            if (_habitos.isEmpty)
-              Text(T.nenhumaPraticaAtiva, style: KT.caption(cor: KC.textoSuave)),
-            const SizedBox(height: 20),
+          // ── Seção Práticas: título + contador na mesma linha ──────────
+          Row(
+            children: [
+              Text(T.praticasDeHoje, style: KT.titulo()),
+              const Spacer(),
+              if (temHabitos)
+                Text('$concluidos/$total', style: KT.caption(cor: KC.textoSuave)),
+            ],
+          ),
 
-            if (_carregando)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Text(T.carregando, style: KT.caption()),
-              )
-            else if (_habitos.isNotEmpty)
-              ..._habitos.asMap().entries.map((entry) {
-                return _PedraHabito(
-                  habito: entry.value,
-                  aoMarcar: () => _marcarHabito(entry.key),
-                );
-              }),
-
-            if (_habitos.isNotEmpty) ...[
-              const SizedBox(height: 20),
-
-              // Barra de progresso ultra-fina (2px) + indicador numérico
-              Row(
+          // Barra de progresso ultra-fina (2px), logo abaixo do título
+          if (temHabitos) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 2,
+              child: Stack(
                 children: [
-                  Expanded(
-                    child: SizedBox(
-                      height: 2,
-                      child: Stack(
-                        children: [
-                          Container(color: KC.linha),
-                          FractionallySizedBox(
-                            widthFactor: total == 0 ? 0 : (concluidos / total).clamp(0.0, 1.0),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 320),
-                              curve: Curves.easeInOutCubic,
-                              color: KC.acento,
-                            ),
-                          ),
-                        ],
-                      ),
+                  Container(color: KC.linha),
+                  FractionallySizedBox(
+                    widthFactor: total == 0 ? 0 : (concluidos / total).clamp(0.0, 1.0),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 320),
+                      curve: Curves.easeInOutCubic,
+                      color: KC.acento,
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  Text('$concluidos/$total', style: KT.caption(cor: KC.textoSuave)),
                 ],
               ),
-            ],
+            ),
+          ],
 
-            const SizedBox(height: 32),
-            KT.divisor(),
-            const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
-            // ── Card Modo Silêncio ────────────────────────────────────────
-            GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                Navigator.push(
-                  context,
-                  PageRouteBuilder(
-                    pageBuilder: (_, _, _) => const TelaSilencioSelecao(),
-                    transitionsBuilder: (_, anim, _, child) =>
-                        FadeTransition(opacity: anim, child: child),
-                    transitionDuration: const Duration(milliseconds: 320),
-                  ),
-                );
-              },
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
-                decoration: BoxDecoration(
-                  color: KC.card,
-                  borderRadius: BorderRadius.circular(16),
-                  border: KC.escuro ? null : Border.all(color: KC.linha, width: 1),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: KC.escuro ? 0.22 : 0.07),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    KairoEnso(tamanho: 48, cor: KC.acento.withValues(alpha: 0.6)),
-                    const SizedBox(width: 18),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(T.modoSilencioTitulo, style: KT.titulo()),
-                          const SizedBox(height: 4),
-                          Text(
-                            T.pausaFocoPresenca,
-                            style: KT.caption(),
+          // Lista flexível — preenche o meio e rola sozinha se houver práticas
+          // demais. Pull-to-refresh fica só aqui, sem mover o resto da tela.
+          Expanded(
+            child: RefreshIndicator(
+              color: KC.acento,
+              backgroundColor: KC.fundo,
+              onRefresh: _carregar,
+              child: _carregando
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Text(T.carregando, style: KT.caption()),
+                        ),
+                      ],
+                    )
+                  : _habitos.isEmpty
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: [
+                            Text(
+                              T.nenhumaPraticaAtiva,
+                              style: KT.caption(cor: KC.textoSuave),
+                            ),
+                          ],
+                        )
+                      : ListView.builder(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: EdgeInsets.zero,
+                          itemCount: _habitos.length,
+                          itemBuilder: (_, i) => _PedraHabito(
+                            habito: _habitos[i],
+                            aoMarcar: () => _marcarHabito(i),
                           ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                        ),
+            ),
+          ),
+
+          const SizedBox(height: 20),
+          KT.divisor(),
+          const SizedBox(height: 20),
+
+          // ── Cards de ação: empilhados, fixos na base ──────────────────
+          _CardAcao(
+            icone: KairoEnso(tamanho: 38, cor: KC.acento.withValues(alpha: 0.6)),
+            titulo: T.modoSilencioTitulo,
+            subtitulo: T.pausaFocoPresenca,
+            aoTocar: () => _abrir(const TelaSilencioSelecao()),
+          ),
+          const SizedBox(height: 12),
+          _CardAcao(
+            icone: const _LuaAnimada(),
+            titulo: T.relaxaEDurmaTitulo,
+            subtitulo: T.relaxaEDurmaSubtitulo,
+            aoTocar: () => _abrir(const TelaDormirSelecao()),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── CARD DE AÇÃO ──────────────────────────────────────────────────────────────
+// Card horizontal compacto, empilhado na base da tela Início (Modo Silêncio em
+// cima, Relaxa e Durma embaixo). Ícone à esquerda, texto no meio, seta à direita.
+
+class _CardAcao extends StatelessWidget {
+  final Widget icone;
+  final String titulo;
+  final String subtitulo;
+  final VoidCallback aoTocar;
+
+  const _CardAcao({
+    required this.icone,
+    required this.titulo,
+    required this.subtitulo,
+    required this.aoTocar,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: aoTocar,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        decoration: BoxDecoration(
+          color: KC.card,
+          borderRadius: BorderRadius.circular(16),
+          border: KC.escuro ? null : Border.all(color: KC.linha, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: KC.escuro ? 0.22 : 0.07),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            SizedBox(width: 44, child: Center(child: icone)),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    titulo,
+                    style: KT.titulo().copyWith(fontSize: 17),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitulo,
+                    style: KT.caption(),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             ),
-
-            const SizedBox(height: 16),
-
-            // ── Card Relaxa e Durma ───────────────────────────────────────
-            GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                Navigator.push(
-                  context,
-                  PageRouteBuilder(
-                    pageBuilder: (_, _, _) => const TelaDormirSelecao(),
-                    transitionsBuilder: (_, anim, _, child) =>
-                        FadeTransition(opacity: anim, child: child),
-                    transitionDuration: const Duration(milliseconds: 320),
-                  ),
-                );
-              },
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
-                decoration: BoxDecoration(
-                  color: KC.card,
-                  borderRadius: BorderRadius.circular(16),
-                  border: KC.escuro ? null : Border.all(color: KC.linha, width: 1),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: KC.escuro ? 0.22 : 0.07),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 48,
-                      child: Icon(
-                        Icons.nightlight_round,
-                        size: 40,
-                        color: KC.acento.withValues(alpha: 0.6),
-                      ),
-                    ),
-                    const SizedBox(width: 18),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(T.relaxaEDurmaTitulo, style: KT.titulo()),
-                          const SizedBox(height: 4),
-                          Text(
-                            T.relaxaEDurmaSubtitulo,
-                            style: KT.caption(),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.arrow_forward_ios,
+              size: 13,
+              color: KC.textoSuave.withValues(alpha: 0.5),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── LUA ANIMADA ───────────────────────────────────────────────────────────────
+// Lua do card "Relaxa e Durma" com uma respiração lenta e calmante: leve
+// variação de escala + opacidade e um brilho suave de luar pulsando. ~4s,
+// vai-e-volta contínuo — discreto, sem chamar atenção demais.
+
+class _LuaAnimada extends StatefulWidget {
+  const _LuaAnimada();
+
+  @override
+  State<_LuaAnimada> createState() => _LuaAnimadaState();
+}
+
+class _LuaAnimadaState extends State<_LuaAnimada>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, child) {
+        final t = Curves.easeInOut.transform(_ctrl.value);
+        return Transform.scale(
+          scale: 0.97 + 0.06 * t,
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: KC.acento.withValues(alpha: 0.22 * t),
+                  blurRadius: 4 + 12 * t,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: Icon(
+              Icons.nightlight_round,
+              size: 34,
+              color: KC.acento.withValues(alpha: 0.5 + 0.35 * t),
+            ),
+          ),
+        );
+      },
     );
   }
 }
