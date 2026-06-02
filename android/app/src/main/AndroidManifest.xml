@@ -6,6 +6,10 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <!-- Relaxa e Durma: mantém o áudio tocando com a tela desligada -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Relaxa e Durma: serviço em primeiro plano que segura o processo vivo
+         para o áudio não ser morto pelo SO com o app em segundo plano -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
 
     <!-- image_picker: acesso à galeria -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
@@ -54,6 +58,15 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Relaxa e Durma: serviço em primeiro plano (flutter_foreground_task).
+             Não altere o android:name. stopWithTask encerra o serviço se o
+             usuário fechar o app pelos recentes. -->
+        <service
+            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:foregroundServiceType="mediaPlayback"
+            android:stopWithTask="true"
+            android:exported="false" />
 
         <!-- Receivers do flutter_local_notifications (pra reagendar após boot) -->
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />

@@ -1069,6 +1069,19 @@ class T {
     'Buen descanso.',
     'Schlaf gut.',
   );
+  // Notificação do serviço em primeiro plano enquanto o som de dormir toca.
+  static String get dormirNotifTitulo => _g(
+    'Relaxa e Durma',
+    'Relax & Sleep',
+    'Relájate y Duerme',
+    'Entspannen & Schlafen',
+  );
+  static String get dormirNotifTexto => _g(
+    'Tocando para o seu sono.',
+    'Playing for your sleep.',
+    'Sonando para tu descanso.',
+    'Klingt für deinen Schlaf.',
+  );
   static String get tutorialDormirTitulo => _g(
     'Relaxa e Durma',
     'Relax & Sleep',
