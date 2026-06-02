@@ -8,22 +8,27 @@ class KairoAudio {
   static bool _configurado = false;
   static bool _dormirConfigurado = false;
 
+  /// Contexto de áudio padrão do app: mistura com outros apps e NÃO toca com a
+  /// tela bloqueada (categoria `ambient` no iOS). Fonte única para orin/ambiente
+  /// e para restaurar a sessão compartilhada do iOS após o modo dormir.
+  static AudioContext _ctxPadrao() => AudioContext(
+    android: AudioContextAndroid(
+      contentType: AndroidContentType.music,
+      usageType: AndroidUsageType.media,
+      audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+    ),
+    iOS: AudioContextIOS(
+      category: AVAudioSessionCategory.ambient,
+      options: const {
+        AVAudioSessionOptions.mixWithOthers,
+      },
+    ),
+  );
+
   static Future<void> precarregar() async {
     if (_configurado) return;
     try {
-      final ctx = AudioContext(
-        android: AudioContextAndroid(
-          contentType: AndroidContentType.music,
-          usageType: AndroidUsageType.media,
-          audioFocus: AndroidAudioFocus.gainTransientMayDuck,
-        ),
-        iOS: AudioContextIOS(
-          category: AVAudioSessionCategory.ambient,
-          options: const {
-            AVAudioSessionOptions.mixWithOthers,
-          },
-        ),
-      );
+      final ctx = _ctxPadrao();
 
       await _orin.setReleaseMode(ReleaseMode.stop);
       await _orin.setAudioContext(ctx);
@@ -119,6 +124,10 @@ class KairoAudio {
   static Future<void> pararDormir() async {
     try {
       await _dormir.stop();
+      // Restaura a sessão de áudio compartilhada (iOS) para a categoria padrão.
+      // Sem isso, o sino/ambiente continuariam sob `playback` depois de dormir,
+      // pois `precarregar()` não reconfigura uma segunda vez.
+      await AudioPlayer.global.setAudioContext(_ctxPadrao());
     } catch (e) {
       debugPrint('Erro ao parar som de sono: $e');
     }
