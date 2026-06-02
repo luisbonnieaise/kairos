@@ -51,8 +51,9 @@ function sistemaRelatorio(idioma: string): string {
 
   return `You are the Mentor of Kairo. It is Sunday. You are writing the WEEKLY LETTER for the user — the most important moment of the app.
 
-LANGUAGE (CRITICAL)
+LANGUAGE (CRITICAL — NO EXCEPTION)
 Write everything in ${lingua}. Never mix languages.
+The user message below uses English labels (Week, USER PROFILE, etc.) as operational metadata. That is for your reading only. Every field you produce in the JSON MUST be in ${lingua}, not English (unless ${lingua} happens to be English).
 
 TONE
 - Calm, deep, contemplative. Zen mentor tone.
@@ -122,7 +123,18 @@ type GerarOpts = {
   // (modo cron — espalhamento é a defesa, e bater o limite via cron geraria
   // falha em massa).
   aplicarRateLimit: boolean;
+  // Idioma vindo do client (UI atual). `null` em modo CRON ou quando o
+  // client não enviou. Tem precedência sobre `profiles.idioma` quando válido —
+  // evita carta em PT enquanto o perfil ainda não foi sincronizado.
+  idiomaCliente: string | null;
 };
+
+const IDIOMAS_VALIDOS = ['pt', 'en', 'es', 'de'];
+
+function normalizarIdioma(valor: unknown): string | null {
+  if (typeof valor !== 'string') return null;
+  return IDIOMAS_VALIDOS.includes(valor) ? valor : null;
+}
 
 // Gera a carta semanal de um usuário (passos comuns aos dois modos).
 // `clienteLeitura` é o client usado para ler/escrever dados do usuário:
@@ -225,14 +237,14 @@ async function gerarCarta(
     .gte('created_at', `${dataInicio}T00:00:00Z`)
     .lte('created_at', `${dataFim}T23:59:59Z`);
 
-  // Monta sumário de práticas
+  // Monta sumário de práticas. Labels em inglês para não enviesar o LLM ao PT.
   const praticasInfo: string[] = [];
   if (praticas) {
     for (const p of praticas) {
       const dias = (completadas ?? [])
         .filter((c: any) => c.pratica_id === p.id)
         .length;
-      praticasInfo.push(`- ${p.nome} (${p.categoria ?? 'sem categoria'}): ${dias}/7 dias`);
+      praticasInfo.push(`- ${p.nome} (${p.categoria ?? 'uncategorized'}): ${dias}/7 days`);
     }
   }
 
@@ -241,27 +253,27 @@ async function gerarCarta(
   ).join('\n\n');
 
   const contextoPerfil: string[] = [];
-  if (perfil?.nome)          contextoPerfil.push(`Nome: ${perfil.nome}`);
-  if (perfil?.identidade)    contextoPerfil.push(`Identidade que ele quer construir: "${perfil.identidade}"`);
-  if (perfil?.desequilibrio) contextoPerfil.push(`O que mais o tira do eixo: ${perfil.desequilibrio}`);
-  if (perfil?.area_foco)     contextoPerfil.push(`Área que quer reordenar: ${perfil.area_foco}`);
-  if (perfil?.ritmo)         contextoPerfil.push(`Ritmo: ${perfil.ritmo}`);
+  if (perfil?.nome)          contextoPerfil.push(`Name: ${perfil.nome}`);
+  if (perfil?.identidade)    contextoPerfil.push(`Identity they want to build: "${perfil.identidade}"`);
+  if (perfil?.desequilibrio) contextoPerfil.push(`What throws them off balance most: ${perfil.desequilibrio}`);
+  if (perfil?.area_foco)     contextoPerfil.push(`Area they want to reorder: ${perfil.area_foco}`);
+  if (perfil?.ritmo)         contextoPerfil.push(`Pace: ${perfil.ritmo}`);
 
-  const promptUsuario = `Semana de ${dataInicio} a ${dataFim}.
+  const promptUsuario = `Week from ${dataInicio} to ${dataFim}.
 
-PERFIL DO USUÁRIO
-${contextoPerfil.length > 0 ? contextoPerfil.join('\n') : '(perfil incompleto)'}
+USER PROFILE
+${contextoPerfil.length > 0 ? contextoPerfil.join('\n') : '(profile incomplete)'}
 
-PRÁTICAS DA SEMANA
-${praticasInfo.length > 0 ? praticasInfo.join('\n') : '(nenhuma prática ativa)'}
+WEEK'S PRACTICES
+${praticasInfo.length > 0 ? praticasInfo.join('\n') : '(no active practices)'}
 
-REFLEXÕES ESCRITAS (${(reflexoes ?? []).length})
-${reflexoesTexto || '(nenhuma reflexão escrita esta semana)'}
+REFLECTIONS WRITTEN (${(reflexoes ?? []).length})
+${reflexoesTexto || '(no reflections written this week)'}
 
-CONVERSAS COM O MENTOR
-${(msgsUsuario ?? []).length} mensagens enviadas pelo usuário esta semana.
+CONVERSATIONS WITH THE MENTOR
+${(msgsUsuario ?? []).length} messages sent by the user this week.
 
-Agora escreva a carta semanal seguindo a estrutura JSON.`;
+Now write the weekly letter following the JSON structure.`;
 
   const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -273,7 +285,10 @@ Agora escreva a carta semanal seguindo a estrutura JSON.`;
     body: JSON.stringify({
       model: MODELO_SONNET,
       max_tokens: 1200,
-      system: sistemaRelatorio((perfil?.idioma as string) ?? 'pt'),
+      // Precedência: idioma do body (UI atual) > perfil.idioma (DB) > 'pt'.
+      // No modo CRON `idiomaCliente` é sempre null e cai em perfil.idioma,
+      // que é a única fonte disponível quando não há cliente.
+      system: sistemaRelatorio(opts.idiomaCliente ?? (perfil?.idioma as string) ?? 'pt'),
       messages: [{ role: 'user', content: promptUsuario }],
     }),
   });
@@ -362,6 +377,8 @@ Deno.serve(async (req: Request) => {
       // Modo CRON: recebe { user_id, semana_inicio }. Sem JWT. Não loga o
       // secret. Não chama getUser(). Usa service role para tudo. Mantém a
       // mesma idempotência por (user_id, semana_inicio).
+      // Não há cliente no modo CRON, então `idiomaCliente` é sempre null —
+      // a função cai em `perfil.idioma` no banco.
       let bodyData: { user_id?: string; semana_inicio?: string } = {};
       try { bodyData = await req.json(); } catch { /* ignore */ }
 
@@ -381,7 +398,7 @@ Deno.serve(async (req: Request) => {
         anthropicKey,
         String(userId),
         String(semana),
-        { aplicarRateLimit: false },
+        { aplicarRateLimit: false, idiomaCliente: null },
       );
     }
 
@@ -398,7 +415,9 @@ Deno.serve(async (req: Request) => {
     if (userError || !user) return jsonResp({ error: 'sessao_invalida' }, 401);
 
     // Lê semana_inicio enviado pelo cliente (calculado em tempo local do usuário).
-    let bodyData: { semana_inicio?: string } = {};
+    // `idioma` também vem do cliente — é o idioma da UI atual e tem precedência
+    // sobre o que está no perfil.
+    let bodyData: { semana_inicio?: string; idioma?: string } = {};
     try { bodyData = await req.json(); } catch { /* corpo vazio ou não-JSON */ }
 
     return await gerarCarta(
@@ -407,7 +426,7 @@ Deno.serve(async (req: Request) => {
       anthropicKey,
       user.id,
       bodyData.semana_inicio,
-      { aplicarRateLimit: true },
+      { aplicarRateLimit: true, idiomaCliente: normalizarIdioma(bodyData.idioma) },
     );
   } catch (e) {
     console.error('relatorio-semanal erro interno:', (e as Error).message);

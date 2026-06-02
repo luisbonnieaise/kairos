@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Sistema de tradução do Kairo.
@@ -8,6 +9,11 @@ class T {
   static String _l = 'pt';
   static String get idioma => _l;
 
+  /// Notifica qualquer parte da árvore que precise reconstruir ao trocar idioma.
+  /// O `MaterialApp` em main.dart escuta isso — assim toda a UI reflete a
+  /// mudança imediatamente, sem precisar destruir a pilha de navegação.
+  static final ValueNotifier<String> idiomaNotifier = ValueNotifier<String>('pt');
+
   static const List<Map<String, String>> idiomasDisponiveis = [
     {'codigo': 'pt', 'nome': 'Português', 'nomeNativo': 'Português'},
     {'codigo': 'en', 'nome': 'Inglês',    'nomeNativo': 'English'},
@@ -15,19 +21,26 @@ class T {
     {'codigo': 'de', 'nome': 'Alemão',    'nomeNativo': 'Deutsch'},
   ];
 
+  static bool _valido(String codigo) =>
+      const ['pt', 'en', 'es', 'de'].contains(codigo);
+
   static Future<void> carregarLocal() async {
     final prefs = await SharedPreferences.getInstance();
     final salvo = prefs.getString('idioma');
-    if (salvo != null && ['pt', 'en', 'es', 'de'].contains(salvo)) {
+    if (salvo != null && _valido(salvo)) {
       _l = salvo;
+      idiomaNotifier.value = salvo;
     }
   }
 
   static Future<void> definir(String codigo) async {
-    if (!['pt', 'en', 'es', 'de'].contains(codigo)) return;
+    if (!_valido(codigo)) return;
     _l = codigo;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('idioma', codigo);
+    // Dispara o rebuild global. ValueNotifier só notifica se o valor mudar,
+    // então redefinir o mesmo idioma é no-op.
+    idiomaNotifier.value = codigo;
   }
 
   static String _g(String pt, String en, String es, String de) {
@@ -580,6 +593,35 @@ class T {
     'Dein Sonntagsbrief ist da. Öffne zum Lesen.',
   );
 
+  // ── FORMATAÇÃO DE DATA LOCALIZADA ───────────────────────────────────────────
+
+  /// Data calendário no formato local (`dd/MM/yyyy`, `MM/dd/yyyy`, `dd.MM.yyyy`).
+  /// Usado em telas de identidade/assinatura. Para datas relativas (hoje/ontem)
+  /// use `T.hoje`, `T.ontem`, `T.diasAtras(n)`.
+  static String formatarData(DateTime d) {
+    String pad(int n) => n.toString().padLeft(2, '0');
+    final dd = pad(d.day);
+    final mm = pad(d.month);
+    final yyyy = d.year.toString();
+    switch (_l) {
+      case 'en': return '$mm/$dd/$yyyy';
+      case 'de': return '$dd.$mm.$yyyy';
+      // pt e es usam dd/MM/yyyy
+      default:   return '$dd/$mm/$yyyy';
+    }
+  }
+
+  /// Forma curta "dia + mês abreviado" usada nos cards de carta semanal.
+  /// PT/ES: "15 jan"; EN: "Jan 15"; DE: "15. Jan.".
+  static String formatarDiaMes(int dia, int mes) {
+    final mesAbrev = mesAbreviado(mes);
+    switch (_l) {
+      case 'en': return '$mesAbrev $dia';
+      case 'de': return '$dia. $mesAbrev.';
+      default:   return '$dia $mesAbrev';
+    }
+  }
+
   /// Nome curto do mês no idioma atual (1=jan, 12=dez).
   static String mesAbreviado(int mes) {
     const meses = {
@@ -1087,6 +1129,48 @@ class T {
     'TUTORIALS',
     'TUTORIALES',
     'TUTORIALS',
+  );
+
+  // ── CANAIS DE NOTIFICAÇÃO ANDROID ───────────────────────────────────────────
+  // Visíveis ao usuário em Configurações do telefone → Apps → Kairo → Notificações.
+  // Atenção: o Android fixa nome/descrição na PRIMEIRA criação do canal — para
+  // refletir mudança de idioma, é preciso recriá-lo (deleteNotificationChannel
+  // antes de criar). Isso está implementado em `core/notificacoes.dart`.
+  static String get canalLembreteNome => _g(
+    'Lembrete de prática',
+    'Practice reminder',
+    'Recordatorio de práctica',
+    'Übungserinnerung',
+  );
+  static String get canalLembreteDesc => _g(
+    'Lembrete diário do Mentor',
+    'Daily reminder from the Mentor',
+    'Recordatorio diario del Mentor',
+    'Tägliche Erinnerung vom Mentor',
+  );
+  static String get canalCartaNome => _g(
+    'Carta semanal',
+    'Weekly letter',
+    'Carta semanal',
+    'Wochenbrief',
+  );
+  static String get canalCartaDesc => _g(
+    'A carta de domingo do Mentor',
+    'The Mentor\'s Sunday letter',
+    'La carta del domingo del Mentor',
+    'Der Sonntagsbrief des Mentors',
+  );
+  static String get canalJardimNome => _g(
+    'Jardim',
+    'Garden',
+    'Jardín',
+    'Garten',
+  );
+  static String get canalJardimDesc => _g(
+    'Perguntas do Mentor no Jardim',
+    'Questions from the Mentor in the Garden',
+    'Preguntas del Mentor en el Jardín',
+    'Fragen vom Mentor im Garten',
   );
 
   // ── TUTORIAIS (mostrados na primeira visita de cada tela) ───────────────────
@@ -1609,35 +1693,72 @@ class T {
   }
 
   // ── BIBLIOTECA DE PRÁTICAS PRÉ-DEFINIDAS ────────────────────────────────────
-  // Estrutura: categoria interna (chave em PT) → lista de práticas no idioma atual
+  // Chaves de categoria são enums ASCII estáveis (mind/body/discipline/
+  // relations/work) — salvas no banco em `praticas.categoria`. A exibição
+  // passa por `T.catMente/...` em dojo.dart, que aceita também as chaves
+  // antigas em PT para não quebrar dados existentes.
+  //
+  // Ordem de iteração das chaves é estável (Dart preserva insertion order),
+  // então a UI mostra sempre Mente → Corpo → Disciplina → Relações → Trabalho.
+  static const String catKeyMente      = 'mind';
+  static const String catKeyCorpo      = 'body';
+  static const String catKeyDisciplina = 'discipline';
+  static const String catKeyRelacoes   = 'relations';
+  static const String catKeyTrabalho   = 'work';
+
+  /// Retorna o nome traduzido da categoria a partir de QUALQUER chave —
+  /// nova (enum ASCII) ou antiga (PT). Fallback: devolve a chave como veio
+  /// (útil pra categorias personalizadas que o usuário criou).
+  static String nomeCategoria(String chave) {
+    switch (chave) {
+      case catKeyMente:
+      case 'Mente':
+        return catMente;
+      case catKeyCorpo:
+      case 'Corpo':
+        return catCorpo;
+      case catKeyDisciplina:
+      case 'Disciplina':
+        return catDisciplina;
+      case catKeyRelacoes:
+      case 'Relações':
+        return catRelacoes;
+      case catKeyTrabalho:
+      case 'Trabalho':
+        return catTrabalho;
+      default:
+        return chave;
+    }
+  }
+
   static Map<String, List<Map<String, String>>> get bibliotecaPraticas {
     if (_l == 'en') return const {
-      'Mente': [
+      catKeyMente: [
         {'nome': '5 minutes of silence', 'duracao': '5 min'},
         {'nome': 'Reading', 'duracao': '20 min'},
         {'nome': 'Calligraphy', 'duracao': '15 min'},
         {'nome': 'Journaling 3 questions', 'duracao': '10 min'},
         {'nome': 'Cold shower', 'duracao': '3 min'},
       ],
-      'Corpo': [
+      catKeyCorpo: [
         {'nome': 'Workout', 'duracao': '45 min'},
         {'nome': 'Mobility', 'duracao': '15 min'},
         {'nome': 'Walk', 'duracao': '30 min'},
         {'nome': '100 push-ups', 'duracao': '—'},
         {'nome': 'Stretching', 'duracao': '10 min'},
       ],
-      'Disciplina': [
+      catKeyDisciplina: [
         {'nome': 'Wake before 6am', 'duracao': '—'},
         {'nome': 'No screens in the first hour', 'duracao': '60 min'},
         {'nome': 'Limited eating window', 'duracao': '—'},
         {'nome': 'No social media until noon', 'duracao': '—'},
       ],
-      'Relações': [
+      catKeyRelacoes: [
         {'nome': 'Genuine message to someone', 'duracao': '—'},
         {'nome': 'Call to family', 'duracao': '15 min'},
         {'nome': 'Time without phone', 'duracao': '60 min'},
       ],
-      'Trabalho': [
+      catKeyTrabalho: [
         {'nome': '2h of deep focus', 'duracao': '120 min'},
         {'nome': 'Inbox zero', 'duracao': '—'},
         {'nome': 'Weekly review', 'duracao': '30 min'},
@@ -1645,32 +1766,32 @@ class T {
       ],
     };
     if (_l == 'es') return const {
-      'Mente': [
+      catKeyMente: [
         {'nome': '5 minutos de silencio', 'duracao': '5 min'},
         {'nome': 'Lectura', 'duracao': '20 min'},
         {'nome': 'Caligrafía', 'duracao': '15 min'},
         {'nome': 'Journaling de 3 preguntas', 'duracao': '10 min'},
         {'nome': 'Ducha fría', 'duracao': '3 min'},
       ],
-      'Corpo': [
+      catKeyCorpo: [
         {'nome': 'Entrenamiento', 'duracao': '45 min'},
         {'nome': 'Movilidad', 'duracao': '15 min'},
         {'nome': 'Caminata', 'duracao': '30 min'},
         {'nome': '100 flexiones', 'duracao': '—'},
         {'nome': 'Estiramiento', 'duracao': '10 min'},
       ],
-      'Disciplina': [
+      catKeyDisciplina: [
         {'nome': 'Despertar antes de las 6h', 'duracao': '—'},
         {'nome': 'Sin pantallas en la primera hora', 'duracao': '60 min'},
         {'nome': 'Ventana de comida limitada', 'duracao': '—'},
         {'nome': 'Sin redes sociales hasta el mediodía', 'duracao': '—'},
       ],
-      'Relações': [
+      catKeyRelacoes: [
         {'nome': 'Mensaje genuino a alguien', 'duracao': '—'},
         {'nome': 'Llamada a la familia', 'duracao': '15 min'},
         {'nome': 'Tiempo sin teléfono', 'duracao': '60 min'},
       ],
-      'Trabalho': [
+      catKeyTrabalho: [
         {'nome': '2h de foco profundo', 'duracao': '120 min'},
         {'nome': 'Inbox zero', 'duracao': '—'},
         {'nome': 'Revisión semanal', 'duracao': '30 min'},
@@ -1678,32 +1799,32 @@ class T {
       ],
     };
     if (_l == 'de') return const {
-      'Mente': [
+      catKeyMente: [
         {'nome': '5 Minuten Stille', 'duracao': '5 min'},
         {'nome': 'Lesen', 'duracao': '20 min'},
         {'nome': 'Kalligraphie', 'duracao': '15 min'},
         {'nome': 'Journaling mit 3 Fragen', 'duracao': '10 min'},
         {'nome': 'Kalte Dusche', 'duracao': '3 min'},
       ],
-      'Corpo': [
+      catKeyCorpo: [
         {'nome': 'Training', 'duracao': '45 min'},
         {'nome': 'Mobilität', 'duracao': '15 min'},
         {'nome': 'Spaziergang', 'duracao': '30 min'},
         {'nome': '100 Liegestütze', 'duracao': '—'},
         {'nome': 'Dehnen', 'duracao': '10 min'},
       ],
-      'Disciplina': [
+      catKeyDisciplina: [
         {'nome': 'Vor 6 Uhr aufstehen', 'duracao': '—'},
         {'nome': 'Keine Bildschirme in der ersten Stunde', 'duracao': '60 min'},
         {'nome': 'Begrenztes Essensfenster', 'duracao': '—'},
         {'nome': 'Kein Social Media bis Mittag', 'duracao': '—'},
       ],
-      'Relações': [
+      catKeyRelacoes: [
         {'nome': 'Aufrichtige Nachricht an jemanden', 'duracao': '—'},
         {'nome': 'Anruf bei der Familie', 'duracao': '15 min'},
         {'nome': 'Zeit ohne Handy', 'duracao': '60 min'},
       ],
-      'Trabalho': [
+      catKeyTrabalho: [
         {'nome': '2h tiefe Konzentration', 'duracao': '120 min'},
         {'nome': 'Inbox zero', 'duracao': '—'},
         {'nome': 'Wöchentlicher Review', 'duracao': '30 min'},
@@ -1712,32 +1833,32 @@ class T {
     };
     // Português padrão
     return const {
-      'Mente': [
+      catKeyMente: [
         {'nome': '5 minutos de silêncio', 'duracao': '5 min'},
         {'nome': 'Leitura', 'duracao': '20 min'},
         {'nome': 'Caligrafia', 'duracao': '15 min'},
         {'nome': 'Journaling de 3 perguntas', 'duracao': '10 min'},
         {'nome': 'Banho frio', 'duracao': '3 min'},
       ],
-      'Corpo': [
+      catKeyCorpo: [
         {'nome': 'Treino', 'duracao': '45 min'},
         {'nome': 'Mobilidade', 'duracao': '15 min'},
         {'nome': 'Caminhada', 'duracao': '30 min'},
         {'nome': '100 flexões', 'duracao': '—'},
         {'nome': 'Alongamento', 'duracao': '10 min'},
       ],
-      'Disciplina': [
+      catKeyDisciplina: [
         {'nome': 'Acordar antes das 6h', 'duracao': '—'},
         {'nome': 'Sem telas na primeira hora', 'duracao': '60 min'},
         {'nome': 'Janela de comida limitada', 'duracao': '—'},
         {'nome': 'Sem rede social até meio-dia', 'duracao': '—'},
       ],
-      'Relações': [
+      catKeyRelacoes: [
         {'nome': 'Mensagem genuína para alguém', 'duracao': '—'},
         {'nome': 'Ligação para família', 'duracao': '15 min'},
         {'nome': 'Tempo sem celular', 'duracao': '60 min'},
       ],
-      'Trabalho': [
+      catKeyTrabalho: [
         {'nome': '2h de foco profundo', 'duracao': '120 min'},
         {'nome': 'Inbox zero', 'duracao': '—'},
         {'nome': 'Review semanal', 'duracao': '30 min'},

@@ -365,8 +365,9 @@ class _CardCarta extends StatelessWidget {
     if (data == null) return '';
     final partes = data.split('-');
     if (partes.length < 3) return '';
-    final m = int.tryParse(partes[1]) ?? 1;
-    return '${partes[2]} ${T.mesAbreviado(m)}';
+    final dia = int.tryParse(partes[2]) ?? 1;
+    final mes = int.tryParse(partes[1]) ?? 1;
+    return T.formatarDiaMes(dia, mes);
   }
 
   @override
@@ -505,8 +506,9 @@ class _LinhaCartaAntiga extends StatelessWidget {
     if (data == null) return '';
     final partes = data.split('-');
     if (partes.length < 3) return '';
-    final m = int.tryParse(partes[1]) ?? 1;
-    return '${partes[2]} ${T.mesAbreviado(m)}';
+    final dia = int.tryParse(partes[2]) ?? 1;
+    final mes = int.tryParse(partes[1]) ?? 1;
+    return T.formatarDiaMes(dia, mes);
   }
 
   @override
@@ -554,9 +556,11 @@ class _TelaCartaCompleta extends StatelessWidget {
     final partesIni = (carta['semana_inicio'] as String? ?? '').split('-');
     final partesFim = (carta['semana_fim'] as String? ?? '').split('-');
     if (partesIni.length < 3 || partesFim.length < 3) return '';
-    final mi = int.tryParse(partesIni[1]) ?? 1;
-    final mf = int.tryParse(partesFim[1]) ?? 1;
-    return '${partesIni[2]} ${T.mesAbreviado(mi)} → ${partesFim[2]} ${T.mesAbreviado(mf)}';
+    final diaI = int.tryParse(partesIni[2]) ?? 1;
+    final mesI = int.tryParse(partesIni[1]) ?? 1;
+    final diaF = int.tryParse(partesFim[2]) ?? 1;
+    final mesF = int.tryParse(partesFim[1]) ?? 1;
+    return '${T.formatarDiaMes(diaI, mesI)} → ${T.formatarDiaMes(diaF, mesF)}';
   }
 
   @override

@@ -28,20 +28,21 @@ function sistemaBase(idioma: string, contagemMsgsUsuario: number): string {
 
   const blocoFechamento = faseFechamento ? `
 
-⚠️ FASE DE FECHAMENTO (CRÍTICA — esta conversa já tem ${contagemMsgsUsuario} mensagens do usuário)
-Pare de fazer perguntas. O usuário já refletiu o suficiente. Agora você DEVE:
-1. Sintetizar o que captou da conversa (uma frase).
-2. Dar uma direção clara e prática de como agir nas próximas 24 horas (uma ou duas ações concretas).
-3. Conectar com o propósito pessoal dele (identidade que escolheu construir).
-4. Encerrar a conversa com firmeza serena, sem mais perguntas.
+⚠️ CLOSING PHASE (CRITICAL — this conversation already has ${contagemMsgsUsuario} user messages)
+Stop asking questions. The user has reflected enough. Now you MUST:
+1. Synthesize what you captured from the conversation (one sentence).
+2. Give clear, practical direction on how to act in the next 24 hours (one or two concrete actions).
+3. Connect with their personal purpose (the identity they chose to build).
+4. Close the conversation with serene firmness, no more questions.
 
-Tom: mentor que viu, ouviu, e agora oferece. Não terapeuta investigativo. Foco em SOLUÇÃO e ação.
+Tone: a mentor who has seen, heard, and now offers. Not an investigative therapist. Focus on SOLUTION and action.
 ` : '';
 
   return `You are the Mentor of Kairo — a personal evolution app.
 
-LANGUAGE (CRITICAL)
+LANGUAGE (CRITICAL — NO EXCEPTION)
 You MUST respond ONLY in ${lingua}. Never mix languages. Even if the user writes in another language, respond in ${lingua}.
+The instructions and user metadata below are written in English for your benefit — this is purely operational context. Your reply to the user MUST be in ${lingua}, not English (unless ${lingua} happens to be English).
 
 PUNCTUATION RULE (CRITICAL, NO EXCEPTION)
 Every sentence that asks a question MUST end with a question mark "?". Always.
@@ -99,20 +100,23 @@ function montarContexto(perfil: Record<string, unknown> | null): string {
   const areaFoco      = perfil.area_foco as string | null;
   const ritmo         = perfil.ritmo as string | null;
 
-  if (nome && nome.trim())          partes.push(`Nome: ${nome}`);
-  if (identidade && identidade.trim())       partes.push(`Identidade que ele quer construir: "${identidade}"`);
-  if (desequilibrio && desequilibrio.trim()) partes.push(`O que mais o tira do eixo: ${desequilibrio}`);
-  if (areaFoco && areaFoco.trim())           partes.push(`Área que quer reordenar primeiro: ${areaFoco}`);
-  if (ritmo && ritmo.trim())                 partes.push(`Ritmo de evolução escolhido: ${ritmo}`);
+  // Labels in English so they don't bias the LLM toward Portuguese.
+  // Values come from the user (any language) — that's fine; the system prompt
+  // already mandates the response language.
+  if (nome && nome.trim())                   partes.push(`Name: ${nome}`);
+  if (identidade && identidade.trim())       partes.push(`Identity they want to build: "${identidade}"`);
+  if (desequilibrio && desequilibrio.trim()) partes.push(`What throws them off balance most: ${desequilibrio}`);
+  if (areaFoco && areaFoco.trim())           partes.push(`Area they want to reorder first: ${areaFoco}`);
+  if (ritmo && ritmo.trim())                 partes.push(`Chosen evolution pace: ${ritmo}`);
 
   if (partes.length === 0) return '';
 
   return `
 
-CONTEXTO DESTE USUÁRIO (use com sabedoria, sem citar tudo de uma vez)
+USER CONTEXT (use wisely — don't recite everything at once)
 ${partes.join('\n')}
 
-Use essas informações para personalizar suas respostas. Pode chamar pelo nome em momentos pontuais, não em toda mensagem. Quando relevante, lembre-o da identidade que escolheu construir. Conecte o que ele fala com a área de foco ou o que o desequilibra. Mas seja sutil — não recite o perfil dele, deixe transparecer naturalmente.
+Use this to personalize responses. You may address them by name occasionally, not in every message. When relevant, remind them of the identity they chose to build. Connect what they say with the focus area or what destabilizes them. But be subtle — don't recite their profile, let it surface naturally.
 `;
 }
 
@@ -178,6 +182,14 @@ Deno.serve(async (req: Request) => {
     // prefereSonnet é apenas uma INTENÇÃO do client. Só tem efeito se o
     // usuário for premium (decidido server-side abaixo). Não-premium = Haiku.
     const prefereSonnet = corpo.prefereSonnet === true;
+    // `idioma` é o que o usuário está VENDO no app neste momento. Tem
+    // precedência sobre `profiles.idioma` para evitar resposta em PT quando
+    // o perfil ainda não foi sincronizado (ex.: primeiro login pós-confirmação
+    // de e-mail, ou troca recente que ainda não chegou ao DB).
+    const idiomasValidos = ['pt', 'en', 'es', 'de'];
+    const idiomaCliente = typeof corpo.idioma === 'string' && idiomasValidos.includes(corpo.idioma)
+      ? corpo.idioma
+      : null;
 
     // Validação de entrada (proteção contra abuso)
     // Códigos estáveis: o client agrupa tudo em 'mentor_erro' genérico
@@ -239,7 +251,8 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const idioma = (perfil?.idioma as string) ?? 'pt';
+    // Precedência: idioma do body (UI atual) > perfil.idioma (DB) > 'pt' (default).
+    const idioma = idiomaCliente ?? (perfil?.idioma as string) ?? 'pt';
     // Conta quantas mensagens do USUÁRIO (não do mentor) nesta conversa
     const contagemUsuario = messages.filter((m: any) => m.role === 'user').length;
     const sistemaCompleto = sistemaBase(idioma, contagemUsuario) + montarContexto(perfil);

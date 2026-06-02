@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
 import 'datas.dart';
+import 'i18n.dart';
 
 // ── PERFIL DO USUÁRIO ────────────────────────────────────────────────────────
 
@@ -361,10 +362,17 @@ class BancoRelatorios {
   /// Gera a carta da semana atual via Edge Function.
   /// [semanaInicio] é a data calculada em tempo LOCAL pelo Flutter (YYYY-MM-DD).
   /// Passar esse valor evita que o edge function use UTC e calcule a semana errada.
+  ///
+  /// O `idioma` da UI atual é enviado para o servidor — ele prefere esse valor
+  /// sobre `profiles.idioma` para evitar carta em PT quando o perfil ainda não
+  /// foi sincronizado.
   static Future<Map<String, dynamic>?> gerar({required String semanaInicio}) async {
     final resposta = await supabase.functions.invoke(
       'relatorio-semanal',
-      body: {'semana_inicio': semanaInicio},
+      body: {
+        'semana_inicio': semanaInicio,
+        'idioma': T.idioma,
+      },
     );
 
     if (resposta.status != 200) {

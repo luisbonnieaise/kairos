@@ -84,11 +84,6 @@ class _TelaPremiumState extends State<TelaPremium> {
     }
   }
 
-  String _formatarData(DateTime d) {
-    String pad(int n) => n.toString().padLeft(2, '0');
-    return '${pad(d.day)}/${pad(d.month)}/${d.year}';
-  }
-
   @override
   Widget build(BuildContext context) {
     final billing = Billing.instance;
@@ -132,7 +127,7 @@ class _TelaPremiumState extends State<TelaPremium> {
                       if (premium && periodoFim != null) ...[
                         const SizedBox(height: 8),
                         Text(
-                          '${T.premiumAtivoAte} ${_formatarData(periodoFim)}',
+                          '${T.premiumAtivoAte} ${T.formatarData(periodoFim)}',
                           style: KT.body(),
                         ),
                         const SizedBox(height: 12),

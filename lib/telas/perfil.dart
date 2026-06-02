@@ -9,7 +9,6 @@ import '../core/tutorial.dart';
 import '../core/billing.dart';
 import '../widgets/kairo_avatar.dart';
 import '../main.dart';
-import 'home.dart';
 import 'premium.dart';
 
 class TelaPerfil extends StatefulWidget {
@@ -163,21 +162,13 @@ class _TelaPerfilState extends State<TelaPerfil> {
 
     if (escolhido == null || escolhido == T.idioma) return;
 
-    // Salva local e no perfil
+    // Salva local (dispara T.idiomaNotifier → MaterialApp reconstrói toda a
+    // árvore) e persiste no perfil para que o backend (Mentor/Carta) também
+    // veja o novo idioma. Não precisa mais reiniciar a navegação: o
+    // ValueListenableBuilder em main.dart já refaz o rebuild com a ValueKey
+    // do MaterialApp incluindo o idioma, e os getters de `T.*` re-resolvem.
     await T.definir(escolhido);
     await BancoPerfil.atualizar(idioma: escolhido);
-
-    if (!mounted) return;
-    // Reinicia a navegação na Home pra recarregar os textos no novo idioma
-    Navigator.of(context).pushAndRemoveUntil(
-      PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const TelaHome(),
-        transitionsBuilder: (_, anim, __, child) =>
-            FadeTransition(opacity: anim, child: child),
-        transitionDuration: const Duration(milliseconds: 600),
-      ),
-      (route) => false,
-    );
   }
 
   Future<void> _escolherHorario() async {
@@ -668,11 +659,6 @@ class _LinhaPremiumState extends State<_LinhaPremium> {
     setState(() => _carregando = false);
   }
 
-  String _formatarData(DateTime d) {
-    String pad(int n) => n.toString().padLeft(2, '0');
-    return '${pad(d.day)}/${pad(d.month)}/${d.year}';
-  }
-
   Future<void> _abrirPaywall() async {
     await Navigator.push(
       context,
@@ -711,7 +697,7 @@ class _LinhaPremiumState extends State<_LinhaPremium> {
           if (premium && periodoFim != null) ...[
             const SizedBox(height: 4),
             Text(
-              '${T.premiumAtivoAte} ${_formatarData(periodoFim)}',
+              '${T.premiumAtivoAte} ${T.formatarData(periodoFim)}',
               style: KT.caption(),
             ),
           ],

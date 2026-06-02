@@ -94,17 +94,25 @@ class _KairoAppState extends State<KairoApp> {
 
   @override
   Widget build(BuildContext context) {
-    // Reage a mudanças de tema (claro/escuro). Quando o usuário troca no
-    // Perfil, toda a árvore reconstrói com as novas cores.
+    // Reage a mudanças de tema (claro/escuro) E de idioma. Quando o usuário
+    // troca qualquer um no Perfil, toda a árvore reconstrói. A `ValueKey`
+    // inclui ambos para garantir remount quando o tema muda (algumas cores
+    // são lidas no `initState`); para idioma, o rebuild dos `Text(T.X)` já
+    // re-resolve os getters, mas mantemos no key para consistência.
     return ValueListenableBuilder<bool>(
       valueListenable: KC.temaEscuro,
       builder: (context, _, _) {
-        return MaterialApp(
-          key: ValueKey('kairo-tema-${KC.escuro}'),
-          title: 'Kairo',
-          debugShowCheckedModeBanner: false,
-          theme: kairoTema(),
-          home: const TelaSplash(),
+        return ValueListenableBuilder<String>(
+          valueListenable: T.idiomaNotifier,
+          builder: (context, idioma, _) {
+            return MaterialApp(
+              key: ValueKey('kairo-${KC.escuro}-$idioma'),
+              title: 'Kairo',
+              debugShowCheckedModeBanner: false,
+              theme: kairoTema(),
+              home: const TelaSplash(),
+            );
+          },
         );
       },
     );
@@ -203,7 +211,13 @@ class _TelaSplashState extends State<TelaSplash>
     try {
       final perfil = await BancoPerfil.carregar();
       final idiomaSalvo = perfil?['idioma'] as String?;
-      if (idiomaSalvo != null && idiomaSalvo != T.idioma) {
+      if (idiomaSalvo == null || idiomaSalvo.isEmpty) {
+        // Perfil sem idioma — pode ter sido criado em fluxo onde a coluna
+        // ficou null (signup com Confirm Email ligado). Preenche com o que
+        // o usuário está usando agora. Sem isso, o backend (mentor/carta)
+        // sempre cai no default 'pt'.
+        await BancoPerfil.atualizar(idioma: T.idioma);
+      } else if (idiomaSalvo != T.idioma) {
         await T.definir(idiomaSalvo);
       }
     } catch (e) {
