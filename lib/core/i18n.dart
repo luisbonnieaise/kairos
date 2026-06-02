@@ -983,6 +983,105 @@ class T {
   );
   static String get voltar => _g('Voltar', 'Back', 'Volver', 'Zurück');
 
+  // ── RELAXA E DURMA ─────────────────────────────────────────────────────────
+  static String get relaxaEDurmaTitulo => _g(
+    'Relaxa e Durma',
+    'Relax & Sleep',
+    'Relájate y Duerme',
+    'Entspannen & Schlafen',
+  );
+  static String get relaxaEDurmaSubtitulo => _g(
+    'Adormeça com som, mesmo de tela desligada.',
+    'Fall asleep to sound, even with the screen off.',
+    'Duérmete con sonido, incluso con la pantalla apagada.',
+    'Schlafe mit Klang ein, auch bei ausgeschaltetem Bildschirm.',
+  );
+  static String get escolhaSom => _g(
+    'Escolha um som',
+    'Choose a sound',
+    'Elige un sonido',
+    'Wähle einen Klang',
+  );
+  static String get porQuantoTempo => _g(
+    'Por quanto tempo?',
+    'For how long?',
+    '¿Por cuánto tiempo?',
+    'Für wie lange?',
+  );
+  static String get gruposAmbientes => _g(
+    'AMBIENTES',
+    'AMBIENT',
+    'AMBIENTES',
+    'UMGEBUNG',
+  );
+  static String get gruposFrequencias => _g(
+    'FREQUÊNCIAS',
+    'FREQUENCIES',
+    'FRECUENCIAS',
+    'FREQUENZEN',
+  );
+  static String get somSelva => _g('Selva', 'Jungle', 'Selva', 'Dschungel');
+  static String get freq432 => _g(
+    '432 Hz · Harmonia',
+    '432 Hz · Harmony',
+    '432 Hz · Armonía',
+    '432 Hz · Harmonie',
+  );
+  static String get freq528 => _g(
+    '528 Hz · Cura emocional',
+    '528 Hz · Emotional healing',
+    '528 Hz · Sanación emocional',
+    '528 Hz · Emotionale Heilung',
+  );
+  static String get freq396 => _g(
+    '396 Hz · Liberação',
+    '396 Hz · Release',
+    '396 Hz · Liberación',
+    '396 Hz · Befreiung',
+  );
+  static String get freq639 => _g(
+    '639 Hz · Conexão',
+    '639 Hz · Connection',
+    '639 Hz · Conexión',
+    '639 Hz · Verbindung',
+  );
+  static String get freq783 => _g(
+    '7.83 Hz · Schumann',
+    '7.83 Hz · Schumann',
+    '7.83 Hz · Schumann',
+    '7.83 Hz · Schumann',
+  );
+  static String get aNoiteToda => _g(
+    'A noite toda',
+    'All night',
+    'Toda la noche',
+    'Die ganze Nacht',
+  );
+  static String horas(int h) {
+    if (_l == 'en') return h == 1 ? '1 hour' : '$h hours';
+    if (_l == 'es') return h == 1 ? '1 hora' : '$h horas';
+    if (_l == 'de') return h == 1 ? '1 Stunde' : '$h Stunden';
+    return h == 1 ? '1 hora' : '$h horas';
+  }
+  static String get bomSono => _g(
+    'Bom sono.',
+    'Sleep well.',
+    'Buen descanso.',
+    'Schlaf gut.',
+  );
+  static String get tutorialDormirTitulo => _g(
+    'Relaxa e Durma',
+    'Relax & Sleep',
+    'Relájate y Duerme',
+    'Entspannen & Schlafen',
+  );
+  static String get tutorialDormirTexto => _g(
+    'Escolha um som (ambiente ou frequência) e um tempo. O áudio continua tocando mesmo com a tela desligada e desliga sozinho com um fade suave no fim. Toque longo na tela para parar.',
+    'Choose a sound (ambient or frequency) and a duration. The audio keeps playing even with the screen off and fades out on its own at the end. Long-press the screen to stop.',
+    'Elige un sonido (ambiente o frecuencia) y un tiempo. El audio sigue sonando incluso con la pantalla apagada y se apaga solo con un suave fundido al final. Mantén pulsada la pantalla para detener.',
+    'Wähle einen Klang (Umgebung oder Frequenz) und eine Dauer. Der Ton spielt auch bei ausgeschaltetem Bildschirm weiter und blendet am Ende von selbst aus. Lange auf den Bildschirm tippen zum Stoppen.',
+  );
+
   // ── ONBOARDING ─────────────────────────────────────────────────────────────
   static String get prov1 => _g('Você não precisa', 'You don\'t need', 'No necesitas', 'Du brauchst nicht');
   static String get prov2 => _g('de mais um app.',  'another app.',     'otra app.',     'noch eine App.');

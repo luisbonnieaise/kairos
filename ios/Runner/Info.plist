@@ -63,6 +63,11 @@
 			</array>
 		</dict>
 	</array>
+	<!-- Relaxa e Durma: áudio continua tocando com o app em segundo plano / tela bloqueada -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

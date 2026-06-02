@@ -13,6 +13,7 @@ import 'dojo.dart';
 import 'jardim.dart';
 import 'perfil.dart';
 import 'silencio.dart';
+import 'dormir.dart';
 import 'biblioteca.dart';
 
 class TelaHome extends StatefulWidget {
@@ -468,6 +469,66 @@ class _AbaPatioState extends State<_AbaPatio> {
                           const SizedBox(height: 4),
                           Text(
                             T.pausaFocoPresenca,
+                            style: KT.caption(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // ── Card Relaxa e Durma ───────────────────────────────────────
+            GestureDetector(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                Navigator.push(
+                  context,
+                  PageRouteBuilder(
+                    pageBuilder: (_, _, _) => const TelaDormirSelecao(),
+                    transitionsBuilder: (_, anim, _, child) =>
+                        FadeTransition(opacity: anim, child: child),
+                    transitionDuration: const Duration(milliseconds: 320),
+                  ),
+                );
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+                decoration: BoxDecoration(
+                  color: KC.card,
+                  borderRadius: BorderRadius.circular(16),
+                  border: KC.escuro ? null : Border.all(color: KC.linha, width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: KC.escuro ? 0.22 : 0.07),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 48,
+                      child: Icon(
+                        Icons.nightlight_round,
+                        size: 40,
+                        color: KC.acento.withValues(alpha: 0.6),
+                      ),
+                    ),
+                    const SizedBox(width: 18),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(T.relaxaEDurmaTitulo, style: KT.titulo()),
+                          const SizedBox(height: 4),
+                          Text(
+                            T.relaxaEDurmaSubtitulo,
                             style: KT.caption(),
                           ),
                         ],
