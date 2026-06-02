@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Sistema de tradução do Kairo.
@@ -8,6 +9,11 @@ class T {
   static String _l = 'pt';
   static String get idioma => _l;
 
+  /// Notifica qualquer parte da árvore que precise reconstruir ao trocar idioma.
+  /// O `MaterialApp` em main.dart escuta isso — assim toda a UI reflete a
+  /// mudança imediatamente, sem precisar destruir a pilha de navegação.
+  static final ValueNotifier<String> idiomaNotifier = ValueNotifier<String>('pt');
+
   static const List<Map<String, String>> idiomasDisponiveis = [
     {'codigo': 'pt', 'nome': 'Português', 'nomeNativo': 'Português'},
     {'codigo': 'en', 'nome': 'Inglês',    'nomeNativo': 'English'},
@@ -15,19 +21,26 @@ class T {
     {'codigo': 'de', 'nome': 'Alemão',    'nomeNativo': 'Deutsch'},
   ];
 
+  static bool _valido(String codigo) =>
+      const ['pt', 'en', 'es', 'de'].contains(codigo);
+
   static Future<void> carregarLocal() async {
     final prefs = await SharedPreferences.getInstance();
     final salvo = prefs.getString('idioma');
-    if (salvo != null && ['pt', 'en', 'es', 'de'].contains(salvo)) {
+    if (salvo != null && _valido(salvo)) {
       _l = salvo;
+      idiomaNotifier.value = salvo;
     }
   }
 
   static Future<void> definir(String codigo) async {
-    if (!['pt', 'en', 'es', 'de'].contains(codigo)) return;
+    if (!_valido(codigo)) return;
     _l = codigo;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('idioma', codigo);
+    // Dispara o rebuild global. ValueNotifier só notifica se o valor mudar,
+    // então redefinir o mesmo idioma é no-op.
+    idiomaNotifier.value = codigo;
   }
 
   static String _g(String pt, String en, String es, String de) {
@@ -110,11 +123,11 @@ class T {
     'Completa correo y contraseña.',
     'E-Mail und Passwort ausfüllen.',
   );
-  static String get senhaMin6 => _g(
-    'A senha precisa ter ao menos 6 caracteres.',
-    'Password must have at least 6 characters.',
-    'La contraseña debe tener al menos 6 caracteres.',
-    'Das Passwort muss mindestens 6 Zeichen haben.',
+  static String get senhaRegra => _g(
+    'A senha precisa ter ao menos 8 caracteres, com letras e números.',
+    'Password must have at least 8 characters, with letters and numbers.',
+    'La contraseña debe tener al menos 8 caracteres, con letras y números.',
+    'Das Passwort muss mindestens 8 Zeichen mit Buchstaben und Zahlen haben.',
   );
   static String get comoTeChamarErro => _g(
     'Como podemos te chamar?',
@@ -141,10 +154,10 @@ class T {
     'Zu viele Versuche. Warte einige Minuten.',
   );
   static String get senhaMuitoFraca => _g(
-    'Senha muito fraca. Use ao menos 6 caracteres.',
-    'Password too weak. Use at least 6 characters.',
-    'Contraseña muy débil. Usa al menos 6 caracteres.',
-    'Passwort zu schwach. Mindestens 6 Zeichen.',
+    'Senha muito fraca. Use ao menos 8 caracteres, com letras e números.',
+    'Password too weak. Use at least 8 characters, with letters and numbers.',
+    'Contraseña muy débil. Usa al menos 8 caracteres, con letras y números.',
+    'Passwort zu schwach. Mindestens 8 Zeichen mit Buchstaben und Zahlen.',
   );
   static String get emailInvalido => _g(
     'Email inválido.',
@@ -157,6 +170,44 @@ class T {
     'Something got lost along the way. Try again.',
     'Algo se perdió en el camino. Inténtalo de nuevo.',
     'Etwas ging verloren. Versuche es erneut.',
+  );
+
+  // Confirmação de e-mail (signup com confirmation ligada)
+  static String get confirmeSeuEmail => _g(
+    'CONFIRME SEU E-MAIL',
+    'CONFIRM YOUR EMAIL',
+    'CONFIRMA TU CORREO',
+    'BESTÄTIGE DEINE E-MAIL',
+  );
+  static String get enviamosConfirmacao => _g(
+    'Enviamos um link de confirmação para o seu e-mail. Toque no link para ativar a sua conta e depois faça login.',
+    'We sent a confirmation link to your email. Tap the link to activate your account, then sign in.',
+    'Te enviamos un enlace de confirmación a tu correo. Toca el enlace para activar tu cuenta y luego inicia sesión.',
+    'Wir haben einen Bestätigungslink an deine E-Mail gesendet. Tippe auf den Link, um dein Konto zu aktivieren, und melde dich dann an.',
+  );
+  static String get voltarAoLogin => _g(
+    'Voltar ao login',
+    'Back to sign in',
+    'Volver al inicio de sesión',
+    'Zurück zur Anmeldung',
+  );
+  static String get emailNaoConfirmado => _g(
+    'E-mail ainda não confirmado. Verifique sua caixa de entrada.',
+    'Email not confirmed yet. Check your inbox.',
+    'Correo aún no confirmado. Revisa tu bandeja de entrada.',
+    'E-Mail noch nicht bestätigt. Prüfe deinen Posteingang.',
+  );
+  static String get reenviarConfirmacao => _g(
+    'Reenviar e-mail de confirmação',
+    'Resend confirmation email',
+    'Reenviar correo de confirmación',
+    'Bestätigungs-E-Mail erneut senden',
+  );
+  static String get confirmacaoReenviada => _g(
+    'E-mail de confirmação reenviado. Verifique sua caixa de entrada.',
+    'Confirmation email resent. Check your inbox.',
+    'Correo de confirmación reenviado. Revisa tu bandeja de entrada.',
+    'Bestätigungs-E-Mail erneut gesendet. Prüfe deinen Posteingang.',
   );
 
   // Recuperar senha
@@ -199,6 +250,86 @@ class T {
   );
   static String get salvar => _g('Salvar', 'Save', 'Guardar', 'Speichern');
   static String get salvando => _g('Salvando...', 'Saving...', 'Guardando...', 'Speichern...');
+
+  // ── KAIRO PREMIUM (Fase 03 — Stripe) ───────────────────────────────────────
+  static String get premiumTitulo => _g(
+    'Kairo Premium',
+    'Kairo Premium',
+    'Kairo Premium',
+    'Kairo Premium',
+  );
+  static String get premiumChamada => _g(
+    'O Mentor mais profundo, a carta semanal garantida, limites ampliados.',
+    'A deeper Mentor, guaranteed weekly letter, expanded limits.',
+    'El Mentor más profundo, la carta semanal garantizada, límites ampliados.',
+    'Ein tieferer Mentor, garantierter Wochenbrief, erweiterte Grenzen.',
+  );
+  static String get premiumBeneficioMentor => _g(
+    'Mentor com o modelo mais sábio (Claude Sonnet).',
+    'Mentor with the wisest model (Claude Sonnet).',
+    'Mentor con el modelo más sabio (Claude Sonnet).',
+    'Mentor mit dem weisesten Modell (Claude Sonnet).',
+  );
+  static String get premiumBeneficioCarta => _g(
+    'Carta semanal garantida, mesmo em semanas cheias.',
+    'Weekly letter guaranteed, even in busy weeks.',
+    'Carta semanal garantizada, incluso en semanas llenas.',
+    'Wochenbrief garantiert, auch in vollen Wochen.',
+  );
+  static String get premiumBeneficioLimites => _g(
+    'Limites ampliados de conversa com o Mentor.',
+    'Expanded conversation limits with the Mentor.',
+    'Límites ampliados de conversación con el Mentor.',
+    'Erweiterte Gesprächslimits mit dem Mentor.',
+  );
+  static String get premiumAssinar => _g(
+    'Assinar',
+    'Subscribe',
+    'Suscribirse',
+    'Abonnieren',
+  );
+  static String get premiumAtivo => _g(
+    'Ativo',
+    'Active',
+    'Activo',
+    'Aktiv',
+  );
+  static String get premiumGratuito => _g(
+    'Gratuito',
+    'Free',
+    'Gratuito',
+    'Kostenlos',
+  );
+  static String get premiumAtivoAte => _g(
+    'Ativo até',
+    'Active until',
+    'Activo hasta',
+    'Aktiv bis',
+  );
+  static String get premiumRetornoSucesso => _g(
+    'Assinatura confirmada. Bem-vindo ao Premium.',
+    'Subscription confirmed. Welcome to Premium.',
+    'Suscripción confirmada. Bienvenido a Premium.',
+    'Abo bestätigt. Willkommen bei Premium.',
+  );
+  static String get premiumRetornoCancelado => _g(
+    'Você cancelou. Pode voltar a assinar quando quiser.',
+    'You canceled. You can subscribe again anytime.',
+    'Cancelaste. Puedes volver a suscribirte cuando quieras.',
+    'Du hast abgebrochen. Du kannst jederzeit erneut abonnieren.',
+  );
+  static String get premiumGerenciarStripe => _g(
+    'Gerenciar/cancelar pelo recibo da Stripe enviado por e-mail.',
+    'Manage/cancel via the Stripe receipt sent by email.',
+    'Gestiona/cancela desde el recibo de Stripe enviado por correo.',
+    'Verwalten/kündigen über die per E-Mail gesendete Stripe-Quittung.',
+  );
+  static String get assinaturaErro => _g(
+    'Não foi possível abrir o pagamento. Tente novamente.',
+    'Could not open payment. Try again.',
+    'No se pudo abrir el pago. Inténtalo de nuevo.',
+    'Zahlung konnte nicht geöffnet werden. Versuche es erneut.',
+  );
 
   // ── PÁTIO (INÍCIO) ─────────────────────────────────────────────────────────
   static String get mentorLabel => _g('MENTOR', 'MENTOR', 'MENTOR', 'MENTOR');
@@ -461,6 +592,35 @@ class T {
     'Tu carta del domingo llegó. Abre para leer.',
     'Dein Sonntagsbrief ist da. Öffne zum Lesen.',
   );
+
+  // ── FORMATAÇÃO DE DATA LOCALIZADA ───────────────────────────────────────────
+
+  /// Data calendário no formato local (`dd/MM/yyyy`, `MM/dd/yyyy`, `dd.MM.yyyy`).
+  /// Usado em telas de identidade/assinatura. Para datas relativas (hoje/ontem)
+  /// use `T.hoje`, `T.ontem`, `T.diasAtras(n)`.
+  static String formatarData(DateTime d) {
+    String pad(int n) => n.toString().padLeft(2, '0');
+    final dd = pad(d.day);
+    final mm = pad(d.month);
+    final yyyy = d.year.toString();
+    switch (_l) {
+      case 'en': return '$mm/$dd/$yyyy';
+      case 'de': return '$dd.$mm.$yyyy';
+      // pt e es usam dd/MM/yyyy
+      default:   return '$dd/$mm/$yyyy';
+    }
+  }
+
+  /// Forma curta "dia + mês abreviado" usada nos cards de carta semanal.
+  /// PT/ES: "15 jan"; EN: "Jan 15"; DE: "15. Jan.".
+  static String formatarDiaMes(int dia, int mes) {
+    final mesAbrev = mesAbreviado(mes);
+    switch (_l) {
+      case 'en': return '$mesAbrev $dia';
+      case 'de': return '$dia. $mesAbrev.';
+      default:   return '$dia $mesAbrev';
+    }
+  }
 
   /// Nome curto do mês no idioma atual (1=jan, 12=dez).
   static String mesAbreviado(int mes) {
@@ -823,6 +983,105 @@ class T {
   );
   static String get voltar => _g('Voltar', 'Back', 'Volver', 'Zurück');
 
+  // ── RELAXA E DURMA ─────────────────────────────────────────────────────────
+  static String get relaxaEDurmaTitulo => _g(
+    'Relaxa e Durma',
+    'Relax & Sleep',
+    'Relájate y Duerme',
+    'Entspannen & Schlafen',
+  );
+  static String get relaxaEDurmaSubtitulo => _g(
+    'Adormeça com som, mesmo de tela desligada.',
+    'Fall asleep to sound, even with the screen off.',
+    'Duérmete con sonido, incluso con la pantalla apagada.',
+    'Schlafe mit Klang ein, auch bei ausgeschaltetem Bildschirm.',
+  );
+  static String get escolhaSom => _g(
+    'Escolha um som',
+    'Choose a sound',
+    'Elige un sonido',
+    'Wähle einen Klang',
+  );
+  static String get porQuantoTempo => _g(
+    'Por quanto tempo?',
+    'For how long?',
+    '¿Por cuánto tiempo?',
+    'Für wie lange?',
+  );
+  static String get gruposAmbientes => _g(
+    'AMBIENTES',
+    'AMBIENT',
+    'AMBIENTES',
+    'UMGEBUNG',
+  );
+  static String get gruposFrequencias => _g(
+    'FREQUÊNCIAS',
+    'FREQUENCIES',
+    'FRECUENCIAS',
+    'FREQUENZEN',
+  );
+  static String get somSelva => _g('Selva', 'Jungle', 'Selva', 'Dschungel');
+  static String get freq432 => _g(
+    '432 Hz · Harmonia',
+    '432 Hz · Harmony',
+    '432 Hz · Armonía',
+    '432 Hz · Harmonie',
+  );
+  static String get freq528 => _g(
+    '528 Hz · Cura emocional',
+    '528 Hz · Emotional healing',
+    '528 Hz · Sanación emocional',
+    '528 Hz · Emotionale Heilung',
+  );
+  static String get freq396 => _g(
+    '396 Hz · Liberação',
+    '396 Hz · Release',
+    '396 Hz · Liberación',
+    '396 Hz · Befreiung',
+  );
+  static String get freq639 => _g(
+    '639 Hz · Conexão',
+    '639 Hz · Connection',
+    '639 Hz · Conexión',
+    '639 Hz · Verbindung',
+  );
+  static String get freq783 => _g(
+    '7.83 Hz · Schumann',
+    '7.83 Hz · Schumann',
+    '7.83 Hz · Schumann',
+    '7.83 Hz · Schumann',
+  );
+  static String get aNoiteToda => _g(
+    'A noite toda',
+    'All night',
+    'Toda la noche',
+    'Die ganze Nacht',
+  );
+  static String horas(int h) {
+    if (_l == 'en') return h == 1 ? '1 hour' : '$h hours';
+    if (_l == 'es') return h == 1 ? '1 hora' : '$h horas';
+    if (_l == 'de') return h == 1 ? '1 Stunde' : '$h Stunden';
+    return h == 1 ? '1 hora' : '$h horas';
+  }
+  static String get bomSono => _g(
+    'Bom sono.',
+    'Sleep well.',
+    'Buen descanso.',
+    'Schlaf gut.',
+  );
+  static String get tutorialDormirTitulo => _g(
+    'Relaxa e Durma',
+    'Relax & Sleep',
+    'Relájate y Duerme',
+    'Entspannen & Schlafen',
+  );
+  static String get tutorialDormirTexto => _g(
+    'Escolha um som (ambiente ou frequência) e um tempo. O áudio continua tocando mesmo com a tela desligada e desliga sozinho com um fade suave no fim. Toque longo na tela para parar.',
+    'Choose a sound (ambient or frequency) and a duration. The audio keeps playing even with the screen off and fades out on its own at the end. Long-press the screen to stop.',
+    'Elige un sonido (ambiente o frecuencia) y un tiempo. El audio sigue sonando incluso con la pantalla apagada y se apaga solo con un suave fundido al final. Mantén pulsada la pantalla para detener.',
+    'Wähle einen Klang (Umgebung oder Frequenz) und eine Dauer. Der Ton spielt auch bei ausgeschaltetem Bildschirm weiter und blendet am Ende von selbst aus. Lange auf den Bildschirm tippen zum Stoppen.',
+  );
+
   // ── ONBOARDING ─────────────────────────────────────────────────────────────
   static String get prov1 => _g('Você não precisa', 'You don\'t need', 'No necesitas', 'Du brauchst nicht');
   static String get prov2 => _g('de mais um app.',  'another app.',     'otra app.',     'noch eine App.');
@@ -969,6 +1228,48 @@ class T {
     'TUTORIALS',
     'TUTORIALES',
     'TUTORIALS',
+  );
+
+  // ── CANAIS DE NOTIFICAÇÃO ANDROID ───────────────────────────────────────────
+  // Visíveis ao usuário em Configurações do telefone → Apps → Kairo → Notificações.
+  // Atenção: o Android fixa nome/descrição na PRIMEIRA criação do canal — para
+  // refletir mudança de idioma, é preciso recriá-lo (deleteNotificationChannel
+  // antes de criar). Isso está implementado em `core/notificacoes.dart`.
+  static String get canalLembreteNome => _g(
+    'Lembrete de prática',
+    'Practice reminder',
+    'Recordatorio de práctica',
+    'Übungserinnerung',
+  );
+  static String get canalLembreteDesc => _g(
+    'Lembrete diário do Mentor',
+    'Daily reminder from the Mentor',
+    'Recordatorio diario del Mentor',
+    'Tägliche Erinnerung vom Mentor',
+  );
+  static String get canalCartaNome => _g(
+    'Carta semanal',
+    'Weekly letter',
+    'Carta semanal',
+    'Wochenbrief',
+  );
+  static String get canalCartaDesc => _g(
+    'A carta de domingo do Mentor',
+    'The Mentor\'s Sunday letter',
+    'La carta del domingo del Mentor',
+    'Der Sonntagsbrief des Mentors',
+  );
+  static String get canalJardimNome => _g(
+    'Jardim',
+    'Garden',
+    'Jardín',
+    'Garten',
+  );
+  static String get canalJardimDesc => _g(
+    'Perguntas do Mentor no Jardim',
+    'Questions from the Mentor in the Garden',
+    'Preguntas del Mentor en el Jardín',
+    'Fragen vom Mentor im Garten',
   );
 
   // ── TUTORIAIS (mostrados na primeira visita de cada tela) ───────────────────
@@ -1491,35 +1792,72 @@ class T {
   }
 
   // ── BIBLIOTECA DE PRÁTICAS PRÉ-DEFINIDAS ────────────────────────────────────
-  // Estrutura: categoria interna (chave em PT) → lista de práticas no idioma atual
+  // Chaves de categoria são enums ASCII estáveis (mind/body/discipline/
+  // relations/work) — salvas no banco em `praticas.categoria`. A exibição
+  // passa por `T.catMente/...` em dojo.dart, que aceita também as chaves
+  // antigas em PT para não quebrar dados existentes.
+  //
+  // Ordem de iteração das chaves é estável (Dart preserva insertion order),
+  // então a UI mostra sempre Mente → Corpo → Disciplina → Relações → Trabalho.
+  static const String catKeyMente      = 'mind';
+  static const String catKeyCorpo      = 'body';
+  static const String catKeyDisciplina = 'discipline';
+  static const String catKeyRelacoes   = 'relations';
+  static const String catKeyTrabalho   = 'work';
+
+  /// Retorna o nome traduzido da categoria a partir de QUALQUER chave —
+  /// nova (enum ASCII) ou antiga (PT). Fallback: devolve a chave como veio
+  /// (útil pra categorias personalizadas que o usuário criou).
+  static String nomeCategoria(String chave) {
+    switch (chave) {
+      case catKeyMente:
+      case 'Mente':
+        return catMente;
+      case catKeyCorpo:
+      case 'Corpo':
+        return catCorpo;
+      case catKeyDisciplina:
+      case 'Disciplina':
+        return catDisciplina;
+      case catKeyRelacoes:
+      case 'Relações':
+        return catRelacoes;
+      case catKeyTrabalho:
+      case 'Trabalho':
+        return catTrabalho;
+      default:
+        return chave;
+    }
+  }
+
   static Map<String, List<Map<String, String>>> get bibliotecaPraticas {
     if (_l == 'en') return const {
-      'Mente': [
+      catKeyMente: [
         {'nome': '5 minutes of silence', 'duracao': '5 min'},
         {'nome': 'Reading', 'duracao': '20 min'},
         {'nome': 'Calligraphy', 'duracao': '15 min'},
         {'nome': 'Journaling 3 questions', 'duracao': '10 min'},
         {'nome': 'Cold shower', 'duracao': '3 min'},
       ],
-      'Corpo': [
+      catKeyCorpo: [
         {'nome': 'Workout', 'duracao': '45 min'},
         {'nome': 'Mobility', 'duracao': '15 min'},
         {'nome': 'Walk', 'duracao': '30 min'},
         {'nome': '100 push-ups', 'duracao': '—'},
         {'nome': 'Stretching', 'duracao': '10 min'},
       ],
-      'Disciplina': [
+      catKeyDisciplina: [
         {'nome': 'Wake before 6am', 'duracao': '—'},
         {'nome': 'No screens in the first hour', 'duracao': '60 min'},
         {'nome': 'Limited eating window', 'duracao': '—'},
         {'nome': 'No social media until noon', 'duracao': '—'},
       ],
-      'Relações': [
+      catKeyRelacoes: [
         {'nome': 'Genuine message to someone', 'duracao': '—'},
         {'nome': 'Call to family', 'duracao': '15 min'},
         {'nome': 'Time without phone', 'duracao': '60 min'},
       ],
-      'Trabalho': [
+      catKeyTrabalho: [
         {'nome': '2h of deep focus', 'duracao': '120 min'},
         {'nome': 'Inbox zero', 'duracao': '—'},
         {'nome': 'Weekly review', 'duracao': '30 min'},
@@ -1527,32 +1865,32 @@ class T {
       ],
     };
     if (_l == 'es') return const {
-      'Mente': [
+      catKeyMente: [
         {'nome': '5 minutos de silencio', 'duracao': '5 min'},
         {'nome': 'Lectura', 'duracao': '20 min'},
         {'nome': 'Caligrafía', 'duracao': '15 min'},
         {'nome': 'Journaling de 3 preguntas', 'duracao': '10 min'},
         {'nome': 'Ducha fría', 'duracao': '3 min'},
       ],
-      'Corpo': [
+      catKeyCorpo: [
         {'nome': 'Entrenamiento', 'duracao': '45 min'},
         {'nome': 'Movilidad', 'duracao': '15 min'},
         {'nome': 'Caminata', 'duracao': '30 min'},
         {'nome': '100 flexiones', 'duracao': '—'},
         {'nome': 'Estiramiento', 'duracao': '10 min'},
       ],
-      'Disciplina': [
+      catKeyDisciplina: [
         {'nome': 'Despertar antes de las 6h', 'duracao': '—'},
         {'nome': 'Sin pantallas en la primera hora', 'duracao': '60 min'},
         {'nome': 'Ventana de comida limitada', 'duracao': '—'},
         {'nome': 'Sin redes sociales hasta el mediodía', 'duracao': '—'},
       ],
-      'Relações': [
+      catKeyRelacoes: [
         {'nome': 'Mensaje genuino a alguien', 'duracao': '—'},
         {'nome': 'Llamada a la familia', 'duracao': '15 min'},
         {'nome': 'Tiempo sin teléfono', 'duracao': '60 min'},
       ],
-      'Trabalho': [
+      catKeyTrabalho: [
         {'nome': '2h de foco profundo', 'duracao': '120 min'},
         {'nome': 'Inbox zero', 'duracao': '—'},
         {'nome': 'Revisión semanal', 'duracao': '30 min'},
@@ -1560,32 +1898,32 @@ class T {
       ],
     };
     if (_l == 'de') return const {
-      'Mente': [
+      catKeyMente: [
         {'nome': '5 Minuten Stille', 'duracao': '5 min'},
         {'nome': 'Lesen', 'duracao': '20 min'},
         {'nome': 'Kalligraphie', 'duracao': '15 min'},
         {'nome': 'Journaling mit 3 Fragen', 'duracao': '10 min'},
         {'nome': 'Kalte Dusche', 'duracao': '3 min'},
       ],
-      'Corpo': [
+      catKeyCorpo: [
         {'nome': 'Training', 'duracao': '45 min'},
         {'nome': 'Mobilität', 'duracao': '15 min'},
         {'nome': 'Spaziergang', 'duracao': '30 min'},
         {'nome': '100 Liegestütze', 'duracao': '—'},
         {'nome': 'Dehnen', 'duracao': '10 min'},
       ],
-      'Disciplina': [
+      catKeyDisciplina: [
         {'nome': 'Vor 6 Uhr aufstehen', 'duracao': '—'},
         {'nome': 'Keine Bildschirme in der ersten Stunde', 'duracao': '60 min'},
         {'nome': 'Begrenztes Essensfenster', 'duracao': '—'},
         {'nome': 'Kein Social Media bis Mittag', 'duracao': '—'},
       ],
-      'Relações': [
+      catKeyRelacoes: [
         {'nome': 'Aufrichtige Nachricht an jemanden', 'duracao': '—'},
         {'nome': 'Anruf bei der Familie', 'duracao': '15 min'},
         {'nome': 'Zeit ohne Handy', 'duracao': '60 min'},
       ],
-      'Trabalho': [
+      catKeyTrabalho: [
         {'nome': '2h tiefe Konzentration', 'duracao': '120 min'},
         {'nome': 'Inbox zero', 'duracao': '—'},
         {'nome': 'Wöchentlicher Review', 'duracao': '30 min'},
@@ -1594,32 +1932,32 @@ class T {
     };
     // Português padrão
     return const {
-      'Mente': [
+      catKeyMente: [
         {'nome': '5 minutos de silêncio', 'duracao': '5 min'},
         {'nome': 'Leitura', 'duracao': '20 min'},
         {'nome': 'Caligrafia', 'duracao': '15 min'},
         {'nome': 'Journaling de 3 perguntas', 'duracao': '10 min'},
         {'nome': 'Banho frio', 'duracao': '3 min'},
       ],
-      'Corpo': [
+      catKeyCorpo: [
         {'nome': 'Treino', 'duracao': '45 min'},
         {'nome': 'Mobilidade', 'duracao': '15 min'},
         {'nome': 'Caminhada', 'duracao': '30 min'},
         {'nome': '100 flexões', 'duracao': '—'},
         {'nome': 'Alongamento', 'duracao': '10 min'},
       ],
-      'Disciplina': [
+      catKeyDisciplina: [
         {'nome': 'Acordar antes das 6h', 'duracao': '—'},
         {'nome': 'Sem telas na primeira hora', 'duracao': '60 min'},
         {'nome': 'Janela de comida limitada', 'duracao': '—'},
         {'nome': 'Sem rede social até meio-dia', 'duracao': '—'},
       ],
-      'Relações': [
+      catKeyRelacoes: [
         {'nome': 'Mensagem genuína para alguém', 'duracao': '—'},
         {'nome': 'Ligação para família', 'duracao': '15 min'},
         {'nome': 'Tempo sem celular', 'duracao': '60 min'},
       ],
-      'Trabalho': [
+      catKeyTrabalho: [
         {'nome': '2h de foco profundo', 'duracao': '120 min'},
         {'nome': 'Inbox zero', 'duracao': '—'},
         {'nome': 'Review semanal', 'duracao': '30 min'},

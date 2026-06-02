@@ -11,6 +11,12 @@ class KairoNotificacoes {
   static final _plugin = FlutterLocalNotificationsPlugin();
   static bool _inicializado = false;
 
+  // IDs dos canais Android. Centralizados para serem usados pelos
+  // `AndroidNotificationDetails` e pela rotina de recriação ao trocar idioma.
+  static const _canalLembreteId = 'kairo_pratica';
+  static const _canalCartaId    = 'kairo_carta';
+  static const _canalJardimId   = 'kairo_jardim';
+
   // Frases curtas do Mentor (vem do i18n no idioma atual)
   static String _fraseAleatoria() {
     final frases = T.frasesNotificacao;
@@ -40,8 +46,69 @@ class KairoNotificacoes {
       const InitializationSettings(android: android, iOS: ios),
     );
 
+    // Garante que os canais existam com nomes no idioma atual. Ao trocar
+    // idioma o listener abaixo recria os canais para refletir a mudança no
+    // painel de Configurações do Android.
+    await _recriarCanais();
+    T.idiomaNotifier.addListener(_aoTrocarIdioma);
+
     _inicializado = true;
   }
+
+  // Disparado pelo `T.idiomaNotifier` quando o usuário troca de idioma.
+  // O ValueNotifier não aceita listener async, então delegamos ao future.
+  static void _aoTrocarIdioma() {
+    _recriarCanais();
+  }
+
+  /// Recria os três canais Android com nomes/descrições no idioma atual.
+  /// Necessário porque o Android FIXA nome/descrição na primeira criação —
+  /// trocar idioma exige deletar e recriar. iOS não tem channel; no-op.
+  static Future<void> _recriarCanais() async {
+    final android = _plugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return; // iOS, web ou desktop
+
+    Future<void> recriar(String id, String nome, String desc) async {
+      // Falhas individuais (canal não existia, etc.) não devem quebrar o app.
+      try { await android.deleteNotificationChannel(id); } catch (_) {}
+      await android.createNotificationChannel(AndroidNotificationChannel(
+        id, nome,
+        description: desc,
+        importance: Importance.high,
+      ));
+    }
+
+    await recriar(_canalLembreteId, T.canalLembreteNome, T.canalLembreteDesc);
+    await recriar(_canalCartaId,    T.canalCartaNome,    T.canalCartaDesc);
+    await recriar(_canalJardimId,   T.canalJardimNome,   T.canalJardimDesc);
+  }
+
+  // Helper para AndroidNotificationDetails dinâmico (não pode ser `const`
+  // porque depende do idioma atual). Cria-se um por chamada — é barato.
+  static AndroidNotificationDetails _detalhesLembrete() => AndroidNotificationDetails(
+    _canalLembreteId,
+    T.canalLembreteNome,
+    channelDescription: T.canalLembreteDesc,
+    importance: Importance.high,
+    priority: Priority.high,
+  );
+
+  static AndroidNotificationDetails _detalhesCarta() => AndroidNotificationDetails(
+    _canalCartaId,
+    T.canalCartaNome,
+    channelDescription: T.canalCartaDesc,
+    importance: Importance.high,
+    priority: Priority.high,
+  );
+
+  static AndroidNotificationDetails _detalhesJardim() => AndroidNotificationDetails(
+    _canalJardimId,
+    T.canalJardimNome,
+    channelDescription: T.canalJardimDesc,
+    importance: Importance.high,
+    priority: Priority.high,
+  );
 
   static Future<bool> pedirPermissao() async {
     final status = await Permission.notification.request();
@@ -74,15 +141,9 @@ class KairoNotificacoes {
       quando = quando.add(const Duration(days: 1));
     }
 
-    const detalhes = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'kairo_pratica',
-        'Lembrete de prática',
-        channelDescription: 'Lembrete diário do Mentor',
-        importance: Importance.high,
-        priority: Priority.high,
-      ),
-      iOS: DarwinNotificationDetails(),
+    final detalhes = NotificationDetails(
+      android: _detalhesLembrete(),
+      iOS: const DarwinNotificationDetails(),
     );
 
     await _plugin.zonedSchedule(
@@ -116,15 +177,9 @@ class KairoNotificacoes {
       quando = quando.add(const Duration(days: 1));
     }
 
-    const detalhes = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'kairo_carta',
-        'Carta semanal',
-        channelDescription: 'A carta de domingo do Mentor',
-        importance: Importance.high,
-        priority: Priority.high,
-      ),
-      iOS: DarwinNotificationDetails(),
+    final detalhes = NotificationDetails(
+      android: _detalhesCarta(),
+      iOS: const DarwinNotificationDetails(),
     );
 
     await _plugin.zonedSchedule(
@@ -173,15 +228,9 @@ class KairoNotificacoes {
       quando = quando.add(const Duration(days: 1));
     }
 
-    const detalhes = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'kairo_jardim',
-        'Jardim',
-        channelDescription: 'Perguntas do Mentor no Jardim',
-        importance: Importance.high,
-        priority: Priority.high,
-      ),
-      iOS: DarwinNotificationDetails(),
+    final detalhes = NotificationDetails(
+      android: _detalhesJardim(),
+      iOS: const DarwinNotificationDetails(),
     );
 
     await _plugin.zonedSchedule(

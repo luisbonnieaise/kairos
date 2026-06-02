@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -51,22 +53,66 @@ final cartaNovaNotifier = ValueNotifier<bool>(false);
 // Notifica a navbar quando há uma pergunta do Jardim não respondida
 final jardimNovaNotifier = ValueNotifier<bool>(false);
 
-class KairoApp extends StatelessWidget {
+// Notifica o último deep link recebido (kairo://...). O paywall (TelaPremium)
+// escuta para detectar retorno do Stripe Checkout. Mais consumidores podem
+// ouvir no futuro — o notifier guarda o último URI, sem fila.
+final ValueNotifier<Uri?> deepLinkNotifier = ValueNotifier<Uri?>(null);
+
+class KairoApp extends StatefulWidget {
   const KairoApp({super.key});
 
   @override
+  State<KairoApp> createState() => _KairoAppState();
+}
+
+class _KairoAppState extends State<KairoApp> {
+  late final AppLinks _appLinks;
+  StreamSubscription<Uri>? _linkSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _appLinks = AppLinks();
+    // Cold start: o sistema pode ter aberto o app com um link.
+    _appLinks.getInitialLink().then((uri) {
+      if (uri != null) deepLinkNotifier.value = uri;
+    }).catchError((Object e) {
+      debugPrint('AppLinks.getInitialLink falhou: $e');
+    });
+    // Warm: enquanto o app está aberto.
+    _linkSub = _appLinks.uriLinkStream.listen(
+      (uri) => deepLinkNotifier.value = uri,
+      onError: (Object e) => debugPrint('AppLinks stream erro: $e'),
+    );
+  }
+
+  @override
+  void dispose() {
+    _linkSub?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Reage a mudanças de tema (claro/escuro). Quando o usuário troca no
-    // Perfil, toda a árvore reconstrói com as novas cores.
+    // Reage a mudanças de tema (claro/escuro) E de idioma. Quando o usuário
+    // troca qualquer um no Perfil, toda a árvore reconstrói. A `ValueKey`
+    // inclui ambos para garantir remount quando o tema muda (algumas cores
+    // são lidas no `initState`); para idioma, o rebuild dos `Text(T.X)` já
+    // re-resolve os getters, mas mantemos no key para consistência.
     return ValueListenableBuilder<bool>(
       valueListenable: KC.temaEscuro,
       builder: (context, _, _) {
-        return MaterialApp(
-          key: ValueKey('kairo-tema-${KC.escuro}'),
-          title: 'Kairo',
-          debugShowCheckedModeBanner: false,
-          theme: kairoTema(),
-          home: const TelaSplash(),
+        return ValueListenableBuilder<String>(
+          valueListenable: T.idiomaNotifier,
+          builder: (context, idioma, _) {
+            return MaterialApp(
+              key: ValueKey('kairo-${KC.escuro}-$idioma'),
+              title: 'Kairo',
+              debugShowCheckedModeBanner: false,
+              theme: kairoTema(),
+              home: const TelaSplash(),
+            );
+          },
         );
       },
     );
@@ -165,7 +211,13 @@ class _TelaSplashState extends State<TelaSplash>
     try {
       final perfil = await BancoPerfil.carregar();
       final idiomaSalvo = perfil?['idioma'] as String?;
-      if (idiomaSalvo != null && idiomaSalvo != T.idioma) {
+      if (idiomaSalvo == null || idiomaSalvo.isEmpty) {
+        // Perfil sem idioma — pode ter sido criado em fluxo onde a coluna
+        // ficou null (signup com Confirm Email ligado). Preenche com o que
+        // o usuário está usando agora. Sem isso, o backend (mentor/carta)
+        // sempre cai no default 'pt'.
+        await BancoPerfil.atualizar(idioma: T.idioma);
+      } else if (idiomaSalvo != T.idioma) {
         await T.definir(idiomaSalvo);
       }
     } catch (e) {

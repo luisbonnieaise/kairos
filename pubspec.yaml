@@ -1,5 +1,5 @@
 name: kairo
-description: "A new Flutter project."
+description: "Kairo — sistema pessoal de evolução: Mentor (Claude), Dôjo de práticas, Jardim de reflexões e carta semanal."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -45,6 +45,8 @@ dependencies:
   shared_preferences: ^2.3.4
   flutter_timezone: ^4.1.0
   image_picker: ^1.1.2
+  url_launcher: ^6.3.0
+  app_links: ^6.3.2
 
 dev_dependencies:
   flutter_test:

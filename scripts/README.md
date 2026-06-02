@@ -10,10 +10,16 @@ Schemas Postgres do projeto Kairo (Supabase). Rodar **na ordem numerada** no SQL
 4. `04_reflexoes.sql` — Jardim (manhã/tarde/noite)
 5. `05_relatorios_semanais.sql` — cartas semanais do Mentor
 6. `06_storage_avatares.sql` — bucket `profire` para avatares
+7. `07_uso_ia.sql` — ledger server-side de uso de IA + função `is_premium()`
+8. `08_subscriptions.sql` — Kairo Premium: tabela `subscriptions` (espelho do Stripe) + `stripe_events` (idempotência) + realinhamento de `is_premium()`
+9. `09_cron_relatorios.sql` — fila + dispatcher pg_cron/pg_net que mata o burst de domingo
+10. `10_indices_revisao.sql` — auditoria de índices p/ 30k MAUs (sem efeito; registro de cobertura)
+
+> Após rodar o `09`, é obrigatório setar 2 GUC com `ALTER DATABASE postgres SET …` (ver cabeçalho do arquivo e `docs/06-runbook-deploy.md §6`). Sem isso o dispatcher é no-op silencioso por design.
 
 ## Banco vazio? Rode tudo de uma vez
 
-No SQL Editor do Supabase, abra um query novo e cole o conteúdo dos 6 arquivos em sequência. Todos são idempotentes (`if not exists`, `on conflict do nothing`, `drop policy if exists`), então rodar duas vezes não quebra nada.
+No SQL Editor do Supabase, abra um query novo e cole o conteúdo dos arquivos em sequência. Todos são idempotentes (`if not exists`, `on conflict do nothing`, `drop policy if exists`), então rodar duas vezes não quebra nada.
 
 ## RLS
 
