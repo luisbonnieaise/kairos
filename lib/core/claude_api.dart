@@ -8,15 +8,17 @@ class ClaudeAPI {
   /// Lança exceção sem detalhes técnicos pra UI tratar.
   ///
   /// [prefereSonnet] é apenas uma PREFERÊNCIA do client, não uma ordem: o
-  /// servidor decide o modelo conforme a assinatura (`is_premium`). Clientes
-  /// não-premium recebem SEMPRE Haiku, independente do valor enviado aqui.
+  /// servidor decide o modelo conforme a assinatura (`is_premium`, que já
+  /// reflete os 3 providers — Stripe/Apple/Google). Clientes não-premium
+  /// recebem SEMPRE Haiku, independente do valor enviado aqui; por isso o
+  /// default é `true` (Fase 07): assinante ativo em qualquer canal → Sonnet.
   ///
   /// O idioma da UI atual é enviado em `idioma`. O servidor prefere esse valor
   /// sobre `profiles.idioma` para evitar descasamento quando o perfil ainda
   /// não foi sincronizado (ex.: primeiro login pós-confirmação de e-mail).
   static Future<String> mentor({
     required List<Map<String, String>> mensagens,
-    bool prefereSonnet = false,
+    bool prefereSonnet = true,
   }) async {
     final resposta = await supabase.functions.invoke(
       'mentor-chat',

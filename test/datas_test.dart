@@ -7,6 +7,48 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kairo/core/datas.dart';
 
 void main() {
+  group('streakConsecutivo (métrica dos widgets)', () {
+    final hoje = DateTime(2025, 6, 3); // terça
+    String d(int diasAtras) =>
+        formatarDataYMD(hoje.subtract(Duration(days: diasAtras)));
+
+    test('sem dados → 0', () {
+      expect(streakConsecutivo(agora: hoje, datasFeitas: {}), 0);
+    });
+
+    test('só hoje → 1', () {
+      expect(streakConsecutivo(agora: hoje, datasFeitas: {d(0)}), 1);
+    });
+
+    test('hoje + ontem + anteontem → 3', () {
+      expect(streakConsecutivo(agora: hoje, datasFeitas: {d(0), d(1), d(2)}), 3);
+    });
+
+    test('hoje em aberto mas ontem ativo → conta a partir de ontem', () {
+      // hoje sem conclusão ainda; ontem e anteontem sim → streak 2 (não quebra)
+      expect(streakConsecutivo(agora: hoje, datasFeitas: {d(1), d(2)}), 2);
+    });
+
+    test('lacuna quebra o streak (conta só o trecho recente)', () {
+      // hoje, ontem, [buraco em d(2)], d(3) → streak 2
+      expect(streakConsecutivo(agora: hoje, datasFeitas: {d(0), d(1), d(3)}), 2);
+    });
+
+    test('nem hoje nem ontem → 0 (streak perdido)', () {
+      expect(streakConsecutivo(agora: hoje, datasFeitas: {d(2), d(3)}), 0);
+    });
+
+    test('atravessa virada de mês', () {
+      final primeiroJunho = DateTime(2025, 6, 1);
+      final feitas = {
+        formatarDataYMD(DateTime(2025, 6, 1)),
+        formatarDataYMD(DateTime(2025, 5, 31)),
+        formatarDataYMD(DateTime(2025, 5, 30)),
+      };
+      expect(streakConsecutivo(agora: primeiroJunho, datasFeitas: feitas), 3);
+    });
+  });
+
   group('formatarDataYMD', () {
     test('formata data simples com padding correto', () {
       expect(formatarDataYMD(DateTime(2025, 1, 5)), '2025-01-05');

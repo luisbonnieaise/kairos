@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home Screen 2x2. updatePeriodMillis=0: a atualização vem do app (bridge)
+     e do WorkManager horário; não dependemos do ciclo do sistema. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="0"
+    android:initialLayout="@layout/kairo_widget_small"
+    android:resizeMode="none"
+    android:widgetCategory="home_screen" />

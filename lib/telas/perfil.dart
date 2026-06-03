@@ -7,6 +7,7 @@ import '../core/notificacoes.dart';
 import '../core/i18n.dart';
 import '../core/tutorial.dart';
 import '../core/billing.dart';
+import '../core/cache.dart';
 import '../widgets/kairo_avatar.dart';
 import '../main.dart';
 import 'premium.dart';
@@ -328,6 +329,9 @@ class _TelaPerfilState extends State<TelaPerfil> {
     if (confirmou != true) return;
 
     HapticFeedback.mediumImpact();
+    // Limpa cache local (enquanto o user.id ainda existe) antes de sair.
+    await CacheLocal.limparUsuario();
+    Billing.instance.limparCache();
     await supabase.auth.signOut();
 
     if (!mounted) return;

@@ -11,7 +11,7 @@ Schemas Postgres do projeto Kairo (Supabase). Rodar **na ordem numerada** no SQL
 5. `05_relatorios_semanais.sql` — cartas semanais do Mentor
 6. `06_storage_avatares.sql` — bucket `profire` para avatares
 7. `07_uso_ia.sql` — ledger server-side de uso de IA + função `is_premium()`
-8. `08_subscriptions.sql` — Kairo Premium: tabela `subscriptions` (espelho do Stripe) + `stripe_events` (idempotência) + realinhamento de `is_premium()`
+8. `08_subscriptions.sql` — Kairo Premium **multiplataforma**: tabela `subscriptions` agnóstica de provider (Stripe/Apple/Google) + `billing_events` (idempotência de todos os providers) + `is_premium()` (inclui `grace`) + RPC `aplicar_estado_assinatura()` (convergência cross-provider). Substitui a versão Stripe-only do doc 03 — ver [docs/07-billing-multiplataforma.md](../docs/07-billing-multiplataforma.md). Migra bancos antigos sem perder linhas.
 9. `09_cron_relatorios.sql` — fila + dispatcher pg_cron/pg_net que mata o burst de domingo
 10. `10_indices_revisao.sql` — auditoria de índices p/ 30k MAUs (sem efeito; registro de cobertura)
 
@@ -29,15 +29,14 @@ Toda tabela tem **Row Level Security ativo**. Cada usuário só enxerga / altera
 
 Os arquivos SQL **não** incluem as edge functions. Elas vivem em `supabase/functions/`:
 
-- `mentor-chat` — proxy para Claude (Haiku/Sonnet) com rate-limit (60/h)
+- `mentor-chat` — proxy para Claude (Haiku/Sonnet) com gating `is_premium` e rate-limit (20/h grátis, 120/h premium)
 - `relatorio-semanal` — gera a carta semanal usando Sonnet
+- `stripe-webhook` — converge `subscriptions` (Stripe) via RPC; `--no-verify-jwt`
+- `apple-webhook` — App Store Server Notifications V2; `--no-verify-jwt`
+- `google-webhook` — Google Play RTDN (Pub/Sub); `--no-verify-jwt`
+- `verify-purchase` — desbloqueio imediato pós-compra IAP (verify-jwt)
 
-Deploy pelas funções:
-
-```bash
-supabase functions deploy mentor-chat
-supabase functions deploy relatorio-semanal
-```
+Deploy: ver comandos e flags em [docs/06-runbook-deploy.md §3](../docs/06-runbook-deploy.md).
 
 Variáveis de ambiente exigidas no Supabase (Project Settings → Edge Functions → Secrets):
 

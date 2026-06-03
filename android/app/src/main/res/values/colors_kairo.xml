@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Paleta Kairo dos widgets (modo claro = washi). Variante escura em
+     values-night/colors_kairo.xml. NADA fora desta paleta. -->
+<resources>
+    <color name="kairo_sumi">#FF0A0A0A</color>
+    <color name="kairo_washi">#FFF5F2EC</color>
+    <color name="kairo_kin">#FF9C7A3F</color>
+    <color name="kairo_graph">#FF2A2A2A</color>
+    <color name="kairo_smoke">#FF555555</color>
+    <color name="kairo_ash">#FF8A8A8A</color>
+    <color name="kairo_line">#FFDCD8CF</color>
+
+    <!-- Semânticas que respeitam claro/escuro -->
+    <color name="kairo_bg">@color/kairo_washi</color>
+    <color name="kairo_body">@color/kairo_sumi</color>
+</resources>

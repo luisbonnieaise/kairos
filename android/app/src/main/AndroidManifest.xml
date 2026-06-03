@@ -78,6 +78,30 @@
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
             </intent-filter>
         </receiver>
+
+        <!-- Widgets Kairo (Home Screen 2x2 e 4x4). RemoteViews — funcionam em
+             todas as versões do Android (12+ e abaixo). -->
+        <receiver
+            android:name="com.example.kairo.widget.providers.KairoSmallWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/kairo_widget_small_info" />
+        </receiver>
+
+        <receiver
+            android:name="com.example.kairo.widget.providers.KairoLargeWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/kairo_widget_large_info" />
+        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

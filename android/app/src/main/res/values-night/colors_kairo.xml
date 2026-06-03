@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Variante escura (default do Kairo): fundo sumi, corpo washi. -->
+<resources>
+    <color name="kairo_bg">@color/kairo_sumi</color>
+    <color name="kairo_body">@color/kairo_washi</color>
+</resources>

@@ -5,9 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/kairo_tema.dart';
 import '../core/banco.dart';
+import '../core/cache.dart';
 import '../core/datas.dart';
 import '../core/i18n.dart';
-import '../core/tutorial.dart';
 import '../main.dart';
 
 class TelaBiblioteca extends StatefulWidget {
@@ -35,15 +35,46 @@ class _TelaBibliotecaState extends State<TelaBiblioteca> {
   @override
   void initState() {
     super.initState();
-    _carregar();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      Tutorial.mostrar(
-        context: context,
-        chave: 'biblioteca',
-        titulo: T.tutorialBibliotecaTitulo,
-        texto: T.tutorialBibliotecaTexto,
-      );
+    _lerCache();   // paint instantâneo de estatísticas e cartas cacheadas
+    _carregar();   // revalida do Supabase em segundo plano
+    // Tutorial é disparado pelo Home ao chegar na aba.
+  }
+
+  // Pinta estatísticas, streaks e cartas do cache local. Números são
+  // revalidados em seguida (poucos ms) — pequena defasagem é aceitável.
+  void _lerCache() {
+    final c = CacheLocal.lerMapa('biblioteca');
+    if (c == null) return;
+    final praticas = ((c['praticas'] as List?) ?? const []).map((e) {
+      final m = Map<String, dynamic>.from(e as Map);
+      return _PraticaComStreak(nome: m['nome'] as String, streak: m['streak'] as int? ?? 0);
+    }).toList();
+    final cartas = ((c['cartas'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    setState(() {
+      _completadasSemana = c['completadasSemana'] as int? ?? 0;
+      _totalReflexoes = c['totalReflexoes'] as int? ?? 0;
+      _totalMensagens = c['totalMensagens'] as int? ?? 0;
+      _diasDesdeIngresso = c['diasIngresso'] as int? ?? 0;
+      _temCartaNova = c['temCartaNova'] == true;
+      _praticas = praticas;
+      _cartas = cartas;
+      _carregando = false;
+    });
+    cartaNovaNotifier.value = _temCartaNova;
+  }
+
+  void _gravarCache() {
+    CacheLocal.gravar('biblioteca', {
+      'completadasSemana': _completadasSemana,
+      'totalReflexoes': _totalReflexoes,
+      'totalMensagens': _totalMensagens,
+      'diasIngresso': _diasDesdeIngresso,
+      'temCartaNova': _temCartaNova,
+      'praticas': _praticas.map((p) => {'nome': p.nome, 'streak': p.streak}).toList(),
+      'cartas': _cartas,
     });
   }
 
@@ -176,6 +207,7 @@ class _TelaBibliotecaState extends State<TelaBiblioteca> {
         _carregando = false;
       });
       cartaNovaNotifier.value = temNova;
+      _gravarCache();
 
       // Se for hora de uma nova carta e não existe carta dessa semana, gera automaticamente
       final semanaAtual = _semanaInicioAtual();

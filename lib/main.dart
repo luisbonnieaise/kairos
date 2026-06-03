@@ -10,6 +10,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/kairo_tema.dart';
 import 'core/audio.dart';
 import 'core/banco.dart';
+import 'core/billing.dart';
+import 'core/cache.dart';
+import 'core/widget_sync.dart';
 import 'core/notificacoes.dart';
 import 'core/i18n.dart';
 import 'telas/auth.dart';
@@ -31,11 +34,18 @@ void main() async {
   // Carrega tema (claro/escuro)
   await KC.carregar();
 
+  // Pré-carrega o cache local (leitura síncrona nas abas → paint instantâneo).
+  await CacheLocal.init();
+
   // Inicializa o sistema de notificações (timezone, plugin etc.)
   await KairoNotificacoes.inicializar();
 
   // Pré-carrega o som antes de mostrar a tela — elimina o crackling inicial
   KairoAudio.precarregar();
+
+  // Billing (Fase 07): inicia o listener do fluxo de compras IAP. Cada compra
+  // é verificada no servidor (verify-purchase) antes de refletir Premium.
+  Billing.instance.iniciar();
 
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
@@ -53,9 +63,9 @@ final cartaNovaNotifier = ValueNotifier<bool>(false);
 // Notifica a navbar quando há uma pergunta do Jardim não respondida
 final jardimNovaNotifier = ValueNotifier<bool>(false);
 
-// Notifica o último deep link recebido (kairo://...). O paywall (TelaPremium)
-// escuta para detectar retorno do Stripe Checkout. Mais consumidores podem
-// ouvir no futuro — o notifier guarda o último URI, sem fila.
+// Notifica o último deep link recebido (kairo://...). Usado por fluxos de
+// auth (confirmação de e-mail / reset de senha). Guarda o último URI, sem fila.
+// (O Premium não usa mais deep link: a compra é IAP nativa — Fase 07.)
 final ValueNotifier<Uri?> deepLinkNotifier = ValueNotifier<Uri?>(null);
 
 class KairoApp extends StatefulWidget {
@@ -65,13 +75,14 @@ class KairoApp extends StatefulWidget {
   State<KairoApp> createState() => _KairoAppState();
 }
 
-class _KairoAppState extends State<KairoApp> {
+class _KairoAppState extends State<KairoApp> with WidgetsBindingObserver {
   late final AppLinks _appLinks;
   StreamSubscription<Uri>? _linkSub;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _appLinks = AppLinks();
     // Cold start: o sistema pode ter aberto o app com um link.
     _appLinks.getInitialLink().then((uri) {
@@ -87,10 +98,24 @@ class _KairoAppState extends State<KairoApp> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Empurra os dados aos widgets quando o app vai para segundo plano
+    // (estratégia de refresh da spec dos widgets).
+    if (state == AppLifecycleState.paused) {
+      atualizarWidgets();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _linkSub?.cancel();
     super.dispose();
   }
+
+  /// Empurra os dados aos widgets nativos (frase, próxima prática, streak).
+  /// Delegado ao [WidgetSync] — mesma derivação usada pelos demais gatilhos.
+  Future<void> atualizarWidgets() => WidgetSync.sincronizar();
 
   @override
   Widget build(BuildContext context) {

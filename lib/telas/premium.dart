@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
 import '../core/kairo_tema.dart';
 import '../core/billing.dart';
 import '../core/i18n.dart';
-import '../main.dart';
 
-/// Paywall do Kairo Premium. Estado lido de `subscriptions` via [Billing];
-/// pagamento via Stripe Checkout (URL externa, navegador do sistema).
+/// Paywall do Kairo Premium (Fase 07 — IAP nativo).
 ///
-/// Retorno via deep link `kairo://premium/sucesso|cancelado` é processado
-/// pelo handler global em [KairoApp]; esta tela só ouve [deepLinkNotifier]
-/// pra re-sincronizar via [Billing.refresh] e exibir feedback.
+/// CONFORMIDADE (crítico, Apple 3.1.1 / Google):
+///   • No mobile mostra SOMENTE a compra via IAP (produtos das lojas).
+///   • ZERO menção/link ao site, preço da web ou "assine mais barato fora".
+///   • Se o usuário já é Premium (inclusive comprado na web via Stripe), mostra
+///     "Ativo até <data>" e ESCONDE a oferta de compra (honra multiplataforma).
+///
+/// O preço exibido vem do `ProductDetails` da loja — nunca hardcoded.
 class TelaPremium extends StatefulWidget {
   const TelaPremium({super.key});
 
@@ -19,76 +22,88 @@ class TelaPremium extends StatefulWidget {
 
 class _TelaPremiumState extends State<TelaPremium> {
   bool _carregando = true;
-  bool _abrindoCheckout = false;
+  bool _processando = false;
   String? _erro;
   String? _aviso;
-  late final VoidCallback _deepLinkListener;
+  List<ProductDetails> _produtos = const [];
 
   @override
   void initState() {
     super.initState();
-    _carregarStatus();
-    // Escuta retorno do Checkout (sucesso/cancelado).
-    _deepLinkListener = _aoReceberDeepLink;
-    deepLinkNotifier.addListener(_deepLinkListener);
+    Billing.instance.mudancas.addListener(_aoMudarEstado);
+    _carregar();
   }
 
   @override
   void dispose() {
-    deepLinkNotifier.removeListener(_deepLinkListener);
+    Billing.instance.mudancas.removeListener(_aoMudarEstado);
     super.dispose();
   }
 
-  Future<void> _carregarStatus() async {
-    await Billing.instance.refresh();
+  void _aoMudarEstado() {
     if (!mounted) return;
-    setState(() => _carregando = false);
-  }
-
-  void _aoReceberDeepLink() {
-    final uri = deepLinkNotifier.value;
-    if (uri == null) return;
-    if (uri.scheme != 'kairo' || uri.host != 'premium') return;
-
-    final sucesso = uri.path == '/sucesso';
+    // O estado convergiu (ex.: verify-purchase confirmou). Re-renderiza e tira
+    // o "processando" se já virou Premium.
     setState(() {
-      _aviso = sucesso ? T.premiumRetornoSucesso : T.premiumRetornoCancelado;
-      _erro = null;
+      if (Billing.instance.cachePremium == true) {
+        _processando = false;
+        _aviso = T.premiumRetornoSucesso;
+      }
     });
-    if (sucesso) {
-      // O webhook é assíncrono — em condição de corrida pode demorar alguns
-      // segundos a propagar status='active'. Mostramos o aviso imediato e
-      // damos um refresh agora; se ainda não convergiu, o cache será
-      // atualizado na próxima abertura da tela.
-      _carregarStatus();
-    }
   }
 
-  Future<void> _assinar() async {
+  Future<void> _carregar() async {
+    await Billing.instance.refresh();
+    final produtos = await Billing.instance.produtos();
+    if (!mounted) return;
     setState(() {
-      _abrindoCheckout = true;
+      _produtos = produtos;
+      _carregando = false;
+    });
+  }
+
+  Future<void> _assinar(ProductDetails produto) async {
+    setState(() {
+      _processando = true;
       _erro = null;
       _aviso = null;
     });
     try {
-      final ok = await Billing.instance.abrirCheckout();
-      if (!mounted) return;
-      setState(() => _abrindoCheckout = false);
-      if (!ok) setState(() => _erro = T.assinaturaErro);
+      await Billing.instance.comprar(produto);
+      // O resultado chega assíncrono pelo purchaseStream → verify-purchase →
+      // refresh → _aoMudarEstado. Não setamos Premium aqui.
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _abrindoCheckout = false;
+        _processando = false;
         _erro = T.assinaturaErro;
       });
     }
   }
+
+  Future<void> _restaurar() async {
+    setState(() {
+      _erro = null;
+      _aviso = null;
+    });
+    try {
+      await Billing.instance.restaurar();
+      if (!mounted) return;
+      setState(() => _aviso = T.premiumRestaurado);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _erro = T.assinaturaErro);
+    }
+  }
+
+  String _rotuloProduto(ProductDetails p) => '${p.title} · ${p.price}';
 
   @override
   Widget build(BuildContext context) {
     final billing = Billing.instance;
     final premium = billing.cachePremium == true;
     final periodoFim = billing.periodoFim;
+    final lojaIndisponivel = !_carregando && !premium && _produtos.isEmpty;
 
     return Scaffold(
       backgroundColor: KC.sumi,
@@ -112,7 +127,6 @@ class _TelaPremiumState extends State<TelaPremium> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 32),
-
                       Text(T.premiumTitulo, style: KT.displayL()),
                       const SizedBox(height: 16),
                       Text(T.premiumChamada, style: KT.bodySerif(cor: KC.cinza)),
@@ -131,7 +145,7 @@ class _TelaPremiumState extends State<TelaPremium> {
                           style: KT.body(),
                         ),
                         const SizedBox(height: 12),
-                        Text(T.premiumGerenciarStripe, style: KT.caption()),
+                        Text(T.premiumGerenciarLoja, style: KT.caption()),
                       ],
 
                       const SizedBox(height: 40),
@@ -145,6 +159,10 @@ class _TelaPremiumState extends State<TelaPremium> {
                       const SizedBox(height: 16),
                       _Beneficio(texto: T.premiumBeneficioLimites),
 
+                      if (lojaIndisponivel) ...[
+                        const SizedBox(height: 32),
+                        Text(T.premiumIndisponivel, style: KT.caption(cor: KC.fumo)),
+                      ],
                       if (_aviso != null) ...[
                         const SizedBox(height: 32),
                         Text(_aviso!, style: KT.caption(cor: KC.kin)),
@@ -158,35 +176,47 @@ class _TelaPremiumState extends State<TelaPremium> {
                 ),
               ),
 
-              // Botão de assinatura (oculto quando já premium)
+              // Oferta de compra — oculta quando já é Premium (honra web/IAP).
               if (!_carregando && !premium) ...[
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _abrindoCheckout ? null : _assinar,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: KC.washi,
-                      foregroundColor: KC.sumi,
-                      disabledBackgroundColor: KC.grafite,
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                for (final produto in _produtos) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _processando ? null : () => _assinar(produto),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: KC.washi,
+                        foregroundColor: KC.sumi,
+                        disabledBackgroundColor: KC.grafite,
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
+                      child: _processando
+                          ? SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.5,
+                                color: KC.fundo,
+                              ),
+                            )
+                          : Text('${T.premiumAssinar} · ${_rotuloProduto(produto)}',
+                              style: KT.body(cor: KC.fundo)),
                     ),
-                    child: _abrindoCheckout
-                        ? SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 1.5,
-                              color: KC.fundo,
-                            ),
-                          )
-                        : Text(T.premiumAssinar, style: KT.body(cor: KC.fundo)),
                   ),
-                ),
-                const SizedBox(height: 32),
+                  const SizedBox(height: 12),
+                ],
+                if (_produtos.isNotEmpty) ...[
+                  Center(
+                    child: TextButton(
+                      onPressed: _processando ? null : _restaurar,
+                      child: Text(T.premiumRestaurar, style: KT.caption(cor: KC.cinza)),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 24),
               ] else
                 const SizedBox(height: 32),
             ],

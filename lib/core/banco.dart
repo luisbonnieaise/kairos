@@ -339,6 +339,26 @@ class BancoPraticas {
     final datasFeitas = dados.map<String>((r) => r['data'] as String).toSet();
     return ultimos7DiasFlags(agora: agora, datasFeitas: datasFeitas);
   }
+
+  /// Streak diário (dias consecutivos com ≥1 prática concluída), terminando no
+  /// dia ativo mais recente. Usado pelos widgets de tela inicial.
+  static Future<int> streakDiario({int janelaDias = 90}) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return 0;
+
+    final agora = DateTime.now();
+    final inicio = formatarDataYMD(
+      DateTime(agora.year, agora.month, agora.day).subtract(Duration(days: janelaDias)),
+    );
+    final dados = await supabase
+        .from('pratica_completadas')
+        .select('data')
+        .eq('user_id', user.id)
+        .gte('data', inicio);
+
+    final datas = dados.map<String>((r) => r['data'] as String).toSet();
+    return streakConsecutivo(agora: agora, datasFeitas: datas);
+  }
 }
 
 // ── RELATÓRIOS SEMANAIS (CARTAS DO MENTOR) ───────────────────────────────────

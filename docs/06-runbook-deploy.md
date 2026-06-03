@@ -28,11 +28,21 @@ Edge Function secrets (`supabase secrets set ...` ou painel):
 | Secret | Obrigatório p/ | Origem |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | mentor-chat, relatorio-semanal | Anthropic Console |
-| `STRIPE_SECRET_KEY` | stripe-checkout, stripe-webhook | Stripe (modo live no go-live) |
+| `STRIPE_SECRET_KEY` | stripe-webhook | Stripe (modo live no go-live) |
 | `STRIPE_WEBHOOK_SECRET` | stripe-webhook | Stripe → endpoint do webhook |
-| `STRIPE_PRICE_PREMIUM` | stripe-checkout | ID do `price` recorrente |
-| `SUPABASE_SERVICE_ROLE_KEY` | webhook, gating, cron | Supabase (auto/painel) |
+| `APPLE_PRIVATE_KEY` / `APPLE_ISSUER_ID` / `APPLE_KEY_ID` | apple-webhook, verify-purchase | App Store Connect API (chave .p8 de IAP) |
+| `APPLE_BUNDLE_ID` / `APPLE_ENV` | apple-webhook, verify-purchase | bundle id / `Sandbox`\|`Production` |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | google-webhook, verify-purchase | service account c/ acesso à Play Developer API |
+| `GOOGLE_PACKAGE_NAME` | google-webhook, verify-purchase | package name do app Android |
+| `GOOGLE_PUBSUB_AUDIENCE` | google-webhook | URL do `google-webhook` (audience do push OIDC) |
+| `SUPABASE_SERVICE_ROLE_KEY` | webhooks, gating, cron | Supabase (auto/painel) |
 | `CRON_SECRET` | relatorio-semanal (cron) | gerar string aleatória forte |
+
+> **Multiplataforma (Fase 07):** o checkout Stripe saiu do app e virou rota
+> server-side na `lp-kairo` — os price ids (`STRIPE_PRICE_<CCY>_<PERIODO>`) e a
+> `STRIPE_SECRET_KEY` vão para a **Vercel** (ver matriz consolidada em
+> [docs/08-guia-consoles-luis.md §5](08-guia-consoles-luis.md)). O Edge Function
+> `stripe-checkout` foi **removido**. Detalhe de cada secret e como obtê-lo: doc 08.
 
 App `.env` (somente públicos): `SUPABASE_URL`, `SUPABASE_KEY` (anon). **Nunca** colocar os de cima no `.env`/bundle.
 
@@ -43,11 +53,18 @@ App `.env` (somente públicos): `SUPABASE_URL`, `SUPABASE_KEY` (anon). **Nunca**
 ```bash
 supabase functions deploy mentor-chat
 supabase functions deploy relatorio-semanal
-supabase functions deploy stripe-checkout
-supabase functions deploy stripe-webhook --no-verify-jwt   # <- obrigatório
+# Billing multiplataforma (Fase 07) — webhooks SEM jwt; verify-purchase COM jwt:
+supabase functions deploy stripe-webhook  --no-verify-jwt   # <- obrigatório
+supabase functions deploy apple-webhook   --no-verify-jwt   # <- obrigatório
+supabase functions deploy google-webhook  --no-verify-jwt   # <- obrigatório
+supabase functions deploy verify-purchase                   # verify-jwt padrão
 ```
 
-> `stripe-webhook` **precisa** de `--no-verify-jwt` (Stripe não envia JWT Supabase; a segurança é a verificação de assinatura). As demais ficam com verify-jwt padrão.
+> Os **3 webhooks** precisam de `--no-verify-jwt`: o provider (Stripe/Apple/Google)
+> não envia JWT Supabase — a segurança é a verificação própria (assinatura HMAC
+> da Stripe, cadeia JWS da Apple, OIDC do Pub/Sub). `verify-purchase` é o
+> oposto: exige o JWT do usuário (verify-jwt padrão). O antigo `stripe-checkout`
+> foi **removido** — o checkout agora é a rota `/api/checkout` na `lp-kairo`.
 
 ### 3.1 Testes locais (sem rede)
 
@@ -127,6 +144,57 @@ stripe listen --forward-to https://<projeto>.supabase.co/functions/v1/stripe-web
 - [ ] Reenviar mesmo evento 2x → 1 linha em `stripe_events`, estado correto em `subscriptions`.
 - [ ] `updated` e `deleted` próximos → estado final = re-fetch da Stripe (não ordem de chegada).
 - [ ] Webhook responde em < 5s em todos os casos (ver logs do Supabase).
+
+> **Nota Fase 07:** a dedupe agora é `public.billing_events` (PK `provider,event_id`),
+> não mais `stripe_events`. Nas queries acima troque `stripe_events` por
+> `select count(*) from public.billing_events where provider='stripe';`.
+
+---
+
+## 4-bis. Validação Billing Multiplataforma (Fase 07)
+
+Roteiros para os **3 providers** + convergência cross-provider. Cada webhook é
+idempotente (`billing_events`), re-busca o estado canônico no provider e aplica
+via `aplicar_estado_assinatura()`. Pré-requisito: consoles configurados em
+[`08-guia-consoles-luis.md`](08-guia-consoles-luis.md) e as 4 funções deployadas
+(3 com `--no-verify-jwt`, `verify-purchase` com verify-jwt).
+
+### Stripe (test mode)
+```bash
+stripe listen --forward-to https://<ref>.supabase.co/functions/v1/stripe-webhook
+stripe trigger checkout.session.completed
+stripe trigger customer.subscription.updated
+stripe trigger customer.subscription.deleted
+```
+- [ ] Reenviar o MESMO evento 2x → 1 linha em `billing_events (provider='stripe')`; estado correto em `subscriptions`.
+- [ ] `updated` + `deleted` quase juntos → estado final = re-fetch da Stripe (não a ordem de chegada).
+- [ ] Assinatura inválida (secret errado) → `400`, zero escrita.
+
+### Apple (Sandbox)
+1. Comprar com conta **Sandbox** no app (build debug) → notificação `SUBSCRIBED` → `subscriptions.status='active'` (ou `trialing`).
+2. Forçar **renovação/expiração** no Sandbox (renovações aceleradas) → `DID_RENEW` / `EXPIRED` refletidos.
+3. **App Store Connect → "Request a Test Notification"** → chega no `apple-webhook` (200).
+- [ ] Mesmo `notificationUUID` 2x → 2ª vez `200` sem reprocessar.
+- [ ] JWS com cadeia/assinatura inválida → `400`, zero escrita.
+- [ ] Estado reflete `getAllSubscriptionStatuses` (re-fetch), não só o payload.
+- [ ] `APPLE_ROOT_CA_G3` setado (pin da raiz) — sem ele o webhook falha fechado.
+
+### Google (conta de teste / license testing)
+1. Comprar com conta de teste pela **trilha interna** → RTDN `PURCHASED` → `active` e **acknowledge** feito.
+2. Cancelar no Play → `CANCELED` (status `active` + `cancel_at_period_end`), depois `EXPIRED`.
+3. **Play Console → Monetization setup → "Send test notification"** → chega no `google-webhook`.
+- [ ] Mesmo `messageId` 2x → 2ª vez `200` sem reprocessar.
+- [ ] Push sem OIDC válido (audience errada) → `401`, zero escrita.
+- [ ] Estado reflete `subscriptionsv2.get` (re-fetch); compra nova é reconhecida (sem reembolso automático).
+
+### verify-purchase (desbloqueio imediato)
+- [ ] Compra recém-feita → `verify-purchase` devolve `premium:true` em segundos.
+- [ ] Token de **outro usuário** (appAccountToken/obfuscatedAccountId ≠ user.id) → `403`, nada gravado.
+
+### Convergência cross-provider (a regra que protege o entitlement)
+1. Conceder Premium via **Stripe** (status `active`).
+2. Disparar um `EXPIRED` de **Apple** para o MESMO `user_id` (sem assinatura Apple ativa).
+- [ ] O entitlement **Stripe permanece** ativo: a RPC não deixa a Apple rebaixar o acesso que a Stripe concede (rebaixamento só vale se vier do mesmo provider vigente).
 
 ---
 

@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/kairo_tema.dart';
 import '../core/banco.dart';
+import '../core/cache.dart';
 import '../core/i18n.dart';
-import '../core/tutorial.dart';
 import '../main.dart' show jardimNovaNotifier;
 
 // (perguntas vêm de T.perguntasJardim* — i18n.dart)
@@ -23,16 +23,26 @@ class _TelaJardimState extends State<TelaJardim> {
   @override
   void initState() {
     super.initState();
-    _carregar();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      Tutorial.mostrar(
-        context: context,
-        chave: 'jardim',
-        titulo: T.tutorialJardimTitulo,
-        texto: T.tutorialJardimTexto,
+    _lerCache();   // paint instantâneo das reflexões cacheadas
+    _carregar();   // revalida do Supabase em segundo plano
+    // Tutorial é disparado pelo Home ao chegar na aba.
+  }
+
+  _Reflexao _mapear(Map<String, dynamic> d) => _Reflexao(
+        data: DateTime.tryParse(d['created_at'] as String? ?? '') ?? DateTime.now(),
+        momento: d['momento'] as String,
+        pergunta: d['pergunta'] as String,
+        resposta: d['resposta'] as String,
       );
+
+  void _lerCache() {
+    final raw = CacheLocal.lerLista('jardim_reflexoes');
+    if (raw == null) return;
+    setState(() {
+      _reflexoes = raw.map(_mapear).toList();
+      _carregando = false;
     });
+    jardimNovaNotifier.value = !_jaRespondeuAtual;
   }
 
   Future<void> _carregar() async {
@@ -41,14 +51,10 @@ class _TelaJardimState extends State<TelaJardim> {
 
       if (!mounted) return;
       setState(() {
-        _reflexoes = dados.map((d) => _Reflexao(
-              data: DateTime.tryParse(d['created_at'] as String? ?? '') ?? DateTime.now(),
-              momento: d['momento'] as String,
-              pergunta: d['pergunta'] as String,
-              resposta: d['resposta'] as String,
-            )).toList();
+        _reflexoes = dados.map(_mapear).toList();
         _carregando = false;
       });
+      CacheLocal.gravar('jardim_reflexoes', dados);
       // Notifica a navbar: ponto vermelho quando pergunta não respondida
       jardimNovaNotifier.value = !_jaRespondeuAtual;
     } catch (_) {

@@ -127,6 +127,14 @@ Pré-requisito: conta **Apple Developer Program** paga, app criado em App Store 
 | Key ID | `APPLE_KEY_ID` |
 | Bundle ID | `APPLE_BUNDLE_ID` |
 | `Sandbox`/`Production` | `APPLE_ENV` |
+| base64 DER da `AppleRootCA-G3.cer` | `APPLE_ROOT_CA_G3` |
+
+> **`APPLE_ROOT_CA_G3` (pin da raiz):** o `apple-webhook` valida a cadeia x5c do
+> JWS até a Apple Root CA - G3 e **compara os bytes** com este pin — sem ele, a
+> verificação **falha fechada** (nenhum fallback inseguro). Baixe
+> `AppleRootCA-G3.cer` em https://www.apple.com/certificateauthority/, converta
+> para base64 e cole:
+> `supabase secrets set APPLE_ROOT_CA_G3="$(base64 -w0 AppleRootCA-G3.cer)"`.
 
 Product IDs (`app.kairo.premium.monthly/yearly`) → 📱 App (config dos produtos no PROMPT 7.8).
 
@@ -228,6 +236,7 @@ supabase functions deploy verify-purchase
 | `APPLE_PRIVATE_KEY` | conteúdo do `.p8` | ✅ | — | — |
 | `APPLE_ISSUER_ID` / `APPLE_KEY_ID` | da chave de API | ✅ | — | — |
 | `APPLE_BUNDLE_ID` / `APPLE_ENV` | bundle / Sandbox\|Production | ✅ | — | — |
+| `APPLE_ROOT_CA_G3` | base64 da AppleRootCA-G3.cer (pin) | ✅ | — | — |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | JSON da SA | ✅ | — | — |
 | `GOOGLE_PACKAGE_NAME` | package name | ✅ | — | — |
 | `GOOGLE_PUBSUB_AUDIENCE` | URL do google-webhook | ✅ | — | — |

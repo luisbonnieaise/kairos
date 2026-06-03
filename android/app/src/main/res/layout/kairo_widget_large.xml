@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home Screen 4x4. 3 zonas verticais (40/30/30) separadas por hairlines de
+     1pt. Cada zona é tocável (deep links definidos no provider):
+       Zona A -> /mentor   Zona B -> /practices   Zona C -> /progress -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/kairo_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/kairo_bg"
+    android:padding="24dp">
+
+    <LinearLayout
+        android:id="@+id/content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <!-- Zona A — Frase do dia -->
+        <LinearLayout
+            android:id="@+id/zone_a"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="40"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="回路"
+                    android:textColor="@color/kairo_kin"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/staleness"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="·"
+                    android:textColor="@color/kairo_smoke"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/phrase"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:fontFamily="serif"
+                android:textColor="@color/kairo_body"
+                android:textSize="16sp"
+                android:lineSpacingExtra="3dp"
+                android:maxLines="4"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/kairo_line" />
+
+        <!-- Zona B — Próxima prática -->
+        <LinearLayout
+            android:id="@+id/zone_b"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="30"
+            android:orientation="vertical"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="PRÓXIMA PRÁTICA"
+                android:textColor="@color/kairo_kin"
+                android:textSize="10sp"
+                android:letterSpacing="0.15" />
+
+            <TextView
+                android:id="@+id/practice_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textColor="@color/kairo_body"
+                android:textSize="16sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/practice_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="@color/kairo_ash"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/kairo_line" />
+
+        <!-- Zona C — Streak silencioso + 回路 no canto -->
+        <LinearLayout
+            android:id="@+id/zone_c"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="30"
+            android:orientation="horizontal"
+            android:gravity="bottom">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <!-- "comece o ritmo" quando streak = 0 -->
+                <TextView
+                    android:id="@+id/streak_zero"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="comece o ritmo"
+                    android:textColor="@color/kairo_smoke"
+                    android:textSize="10sp"
+                    android:visibility="gone" />
+
+                <!-- Linha de stones -->
+                <LinearLayout
+                    android:id="@+id/stones"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <ImageView android:id="@+id/stone1" android:layout_width="5dp" android:layout_height="5dp" android:layout_marginEnd="6dp" android:src="@drawable/kairo_stone" android:contentDescription="@null" />
+                    <ImageView android:id="@+id/stone2" android:layout_width="5dp" android:layout_height="5dp" android:layout_marginEnd="6dp" android:src="@drawable/kairo_stone" android:contentDescription="@null" />
+                    <ImageView android:id="@+id/stone3" android:layout_width="5dp" android:layout_height="5dp" android:layout_marginEnd="6dp" android:src="@drawable/kairo_stone" android:contentDescription="@null" />
+                    <ImageView android:id="@+id/stone4" android:layout_width="5dp" android:layout_height="5dp" android:layout_marginEnd="6dp" android:src="@drawable/kairo_stone" android:contentDescription="@null" />
+                    <ImageView android:id="@+id/stone5" android:layout_width="5dp" android:layout_height="5dp" android:layout_marginEnd="6dp" android:src="@drawable/kairo_stone" android:contentDescription="@null" />
+                    <ImageView android:id="@+id/stone6" android:layout_width="5dp" android:layout_height="5dp" android:layout_marginEnd="6dp" android:src="@drawable/kairo_stone" android:contentDescription="@null" />
+                    <ImageView android:id="@+id/stone7" android:layout_width="5dp" android:layout_height="5dp" android:layout_marginEnd="6dp" android:src="@drawable/kairo_stone" android:contentDescription="@null" />
+                    <TextView
+                        android:id="@+id/stone_overflow"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="·"
+                        android:textColor="@color/kairo_kin"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/streak_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="consistência"
+                    android:textColor="@color/kairo_smoke"
+                    android:textSize="9sp" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="回路"
+                android:textColor="@color/kairo_kin"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Estado vazio -->
+    <LinearLayout
+        android:id="@+id/empty"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="回路"
+            android:textColor="@color/kairo_kin"
+            android:textSize="26sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Kairo"
+            android:textColor="@color/kairo_ash"
+            android:textSize="12sp" />
+    </LinearLayout>
+</FrameLayout>

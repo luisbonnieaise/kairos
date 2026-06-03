@@ -4,7 +4,6 @@ import '../core/kairo_tema.dart';
 import '../core/claude_api.dart';
 import '../core/banco.dart';
 import '../core/i18n.dart';
-import '../core/tutorial.dart';
 
 class TelaMentor extends StatefulWidget {
   const TelaMentor({super.key});
@@ -23,15 +22,7 @@ class _TelaMentorState extends State<TelaMentor> {
   void initState() {
     super.initState();
     _carregarHistorico();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      Tutorial.mostrar(
-        context: context,
-        chave: 'mentor',
-        titulo: T.tutorialMentorTitulo,
-        texto: T.tutorialMentorTexto,
-      );
-    });
+    // Tutorial é disparado pelo Home ao chegar na aba.
   }
 
   Future<void> _carregarHistorico() async {

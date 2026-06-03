@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/kairo_tema.dart';
 import '../core/banco.dart';
+import '../core/cache.dart';
+import '../core/datas.dart';
 import '../core/i18n.dart';
-import '../core/tutorial.dart';
+import '../core/widget_sync.dart';
 
 class TelaDojo extends StatefulWidget {
   const TelaDojo({super.key});
@@ -19,15 +21,49 @@ class _TelaDojoState extends State<TelaDojo> {
   @override
   void initState() {
     super.initState();
-    _carregar();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      Tutorial.mostrar(
-        context: context,
-        chave: 'dojo',
-        titulo: T.tutorialDojoTitulo,
-        texto: T.tutorialDojoTexto,
-      );
+    _lerCache();   // paint instantâneo das práticas cacheadas
+    _carregar();   // revalida do Supabase em segundo plano
+    // Tutorial é disparado pelo Home ao chegar na aba.
+  }
+
+  // Pinta as práticas a partir do cache. Os "últimos 7 dias" (streak) só são
+  // reaproveitados se o cache for de HOJE — senão mostra a lista com a janela
+  // zerada até a revalidação chegar (poucos ms).
+  void _lerCache() {
+    final cache = CacheLocal.lerMapa('dojo_praticas');
+    if (cache == null) return;
+    final mesmaData = cache['data'] == formatarDataYMD(DateTime.now());
+    final itens = (cache['itens'] as List?) ?? const [];
+    setState(() {
+      _praticas = itens.map((e) {
+        final m = Map<String, dynamic>.from(e as Map);
+        final ult = mesmaData
+            ? ((m['ultimos7Dias'] as List?) ?? const []).map((b) => b == true).toList()
+            : List<bool>.filled(7, false);
+        return _Pratica(
+          id: m['id'] as String,
+          nome: m['nome'] as String,
+          duracao: (m['duracao'] as String?) ?? '',
+          categoria: (m['categoria'] as String?) ?? '',
+          ultimos7Dias: ult.length == 7 ? ult : List<bool>.filled(7, false),
+        );
+      }).toList();
+      _carregando = false;
+    });
+  }
+
+  void _gravarCache() {
+    CacheLocal.gravar('dojo_praticas', {
+      'data': formatarDataYMD(DateTime.now()),
+      'itens': _praticas
+          .map((p) => {
+                'id': p.id,
+                'nome': p.nome,
+                'duracao': p.duracao,
+                'categoria': p.categoria,
+                'ultimos7Dias': p.ultimos7Dias,
+              })
+          .toList(),
     });
   }
 
@@ -53,6 +89,7 @@ class _TelaDojoState extends State<TelaDojo> {
         _praticas = praticas;
         _carregando = false;
       });
+      _gravarCache();
     } catch (_) {
       if (!mounted) return;
       setState(() => _carregando = false);
@@ -82,6 +119,7 @@ class _TelaDojoState extends State<TelaDojo> {
             categoria: categoria,
           );
           await _carregar();
+          WidgetSync.sincronizar();
         },
       ),
     );
@@ -202,6 +240,7 @@ class _TelaDojoState extends State<TelaDojo> {
     if (confirmou != true) return;
     await BancoPraticas.remover(id);
     await _carregar();
+    WidgetSync.sincronizar();
   }
 
   @override

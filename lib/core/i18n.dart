@@ -265,10 +265,10 @@ class T {
     'Ein tieferer Mentor, garantierter Wochenbrief, erweiterte Grenzen.',
   );
   static String get premiumBeneficioMentor => _g(
-    'Mentor com o modelo mais sábio (Claude Sonnet).',
-    'Mentor with the wisest model (Claude Sonnet).',
-    'Mentor con el modelo más sabio (Claude Sonnet).',
-    'Mentor mit dem weisesten Modell (Claude Sonnet).',
+    'Mentor mais profundo e perspicaz.',
+    'A deeper, more insightful Mentor.',
+    'Un Mentor más profundo y perspicaz.',
+    'Ein tieferer, scharfsinnigerer Mentor.',
   );
   static String get premiumBeneficioCarta => _g(
     'Carta semanal garantida, mesmo em semanas cheias.',
@@ -325,10 +325,40 @@ class T {
     'Verwalten/kündigen über die per E-Mail gesendete Stripe-Quittung.',
   );
   static String get assinaturaErro => _g(
-    'Não foi possível abrir o pagamento. Tente novamente.',
-    'Could not open payment. Try again.',
-    'No se pudo abrir el pago. Inténtalo de nuevo.',
-    'Zahlung konnte nicht geöffnet werden. Versuche es erneut.',
+    'Não foi possível concluir a compra. Tente novamente.',
+    'Could not complete the purchase. Try again.',
+    'No se pudo completar la compra. Inténtalo de nuevo.',
+    'Kauf konnte nicht abgeschlossen werden. Versuche es erneut.',
+  );
+  static String get premiumRestaurar => _g(
+    'Restaurar compras',
+    'Restore purchases',
+    'Restaurar compras',
+    'Käufe wiederherstellen',
+  );
+  static String get premiumRestaurado => _g(
+    'Compras restauradas.',
+    'Purchases restored.',
+    'Compras restauradas.',
+    'Käufe wiederhergestellt.',
+  );
+  static String get premiumCompraCancelada => _g(
+    'Compra cancelada.',
+    'Purchase canceled.',
+    'Compra cancelada.',
+    'Kauf abgebrochen.',
+  );
+  static String get premiumIndisponivel => _g(
+    'A loja está indisponível agora. Tente novamente mais tarde.',
+    'The store is unavailable right now. Try again later.',
+    'La tienda no está disponible ahora. Inténtalo más tarde.',
+    'Der Store ist gerade nicht verfügbar. Versuche es später.',
+  );
+  static String get premiumGerenciarLoja => _g(
+    'Gerencie sua assinatura nos ajustes da loja.',
+    'Manage your subscription in your store settings.',
+    'Gestiona tu suscripción en los ajustes de la tienda.',
+    'Verwalte dein Abo in den Store-Einstellungen.',
   );
 
   // ── PÁTIO (INÍCIO) ─────────────────────────────────────────────────────────
@@ -339,6 +369,78 @@ class T {
     'Concéntrate en completar tus prácticas hoy. El ritmo se construye un día a la vez.',
     'Konzentriere dich darauf, deine Übungen heute zu vollenden. Rhythmus entsteht Tag für Tag.',
   );
+
+  /// Banco de frases do Mentor (tom zen, sem exclamação, sem emoji — servem
+  /// também aos widgets de tela inicial). A frase do dia é escolhida de forma
+  /// determinística por data (ver [fraseDoDia]).
+  static List<String> get frasesDoDia {
+    if (_l == 'en') return const [
+      'Focus on completing your practices today. Rhythm is built one day at a time.',
+      'Focus is not force. It is the absence of noise.',
+      'The quiet mind sees what the noise was hiding.',
+      'You did not scroll the feed. The feed scrolled you.',
+      'Start small. The temple rises one stone at a time.',
+      'The body knows what it feels. Return to it.',
+      'Discipline is remembering who you want to be.',
+      'Silence is also an answer.',
+      'Presence is doing one thing at a time.',
+      'What you repeat defines you. Choose what to repeat.',
+      'Rest is part of the rhythm, not its opposite.',
+      'Today, the next step is enough.',
+    ];
+    if (_l == 'es') return const [
+      'Concéntrate en completar tus prácticas hoy. El ritmo se construye un día a la vez.',
+      'El foco no es fuerza. Es la ausencia de ruido.',
+      'La mente en calma ve lo que el ruido escondía.',
+      'No deslizaste el feed. El feed te deslizó a ti.',
+      'Empieza pequeño. El templo se alza una piedra a la vez.',
+      'El cuerpo sabe lo que siente. Vuelve a él.',
+      'La disciplina es recordar quién quieres ser.',
+      'El silencio también es una respuesta.',
+      'La presencia es hacer una cosa a la vez.',
+      'Lo que repites te define. Elige qué repetir.',
+      'Descansar es parte del ritmo, no su opuesto.',
+      'Hoy basta el siguiente paso.',
+    ];
+    if (_l == 'de') return const [
+      'Konzentriere dich darauf, deine Übungen heute zu vollenden. Rhythmus entsteht Tag für Tag.',
+      'Fokus ist keine Kraft. Es ist die Abwesenheit von Lärm.',
+      'Der stille Geist sieht, was der Lärm verbarg.',
+      'Du hast nicht den Feed gescrollt. Der Feed hat dich gescrollt.',
+      'Fang klein an. Der Tempel wächst Stein für Stein.',
+      'Der Körper weiß, was er fühlt. Kehre zu ihm zurück.',
+      'Disziplin ist, sich zu erinnern, wer du sein willst.',
+      'Stille ist auch eine Antwort.',
+      'Präsenz ist, eines nach dem anderen zu tun.',
+      'Was du wiederholst, prägt dich. Wähle, was du wiederholst.',
+      'Ruhe gehört zum Rhythmus, nicht zu seinem Gegenteil.',
+      'Heute genügt der nächste Schritt.',
+    ];
+    return const [
+      'Foque em completar suas práticas hoje. O ritmo se constrói um dia de cada vez.',
+      'Foco não é força. É a ausência de ruído.',
+      'A mente quieta percebe o que o ruído escondia.',
+      'Você não rolou o feed. O feed rolou você.',
+      'Comece pequeno. O templo se ergue uma pedra por vez.',
+      'O corpo sabe o que sente. Volte a ele.',
+      'Disciplina é lembrar de quem você quer ser.',
+      'O silêncio também é uma resposta.',
+      'Presença é fazer uma coisa de cada vez.',
+      'O que se repete te define. Escolha o que repetir.',
+      'Descansar faz parte do ritmo, não o seu oposto.',
+      'Hoje basta o próximo passo.',
+    ];
+  }
+
+  /// Frase do dia — escolha DETERMINÍSTICA por data (mesmo critério de seed do
+  /// Jardim): muda a cada dia, igual para o app e para os widgets. Pura e
+  /// testável via [quando].
+  static String fraseDoDia([DateTime? quando]) {
+    final agora = quando ?? DateTime.now();
+    final seed = agora.year * 1000 + agora.month * 50 + agora.day;
+    final banco = frasesDoDia;
+    return banco[seed % banco.length];
+  }
   static String get praticasDeHoje => _g(
     'Práticas de Hoje',
     'Today\'s Practices',

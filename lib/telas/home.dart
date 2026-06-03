@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/kairo_tema.dart';
 import '../core/banco.dart';
+import '../core/cache.dart';
+import '../core/datas.dart';
 import '../core/i18n.dart';
 import '../core/tutorial.dart';
+import '../core/widget_sync.dart';
 import '../widgets/kairo_avatar.dart';
 import '../main.dart' show cartaNovaNotifier, jardimNovaNotifier;
 import 'mentor.dart';
@@ -26,6 +29,9 @@ class TelaHome extends StatefulWidget {
 class _TelaHomeState extends State<TelaHome> {
   int _aba = 0;
 
+  // Todas as abas ficam MONTADAS via IndexedStack: carregam de uma vez no boot
+  // (incluindo a pergunta do Jardim) e a troca entre elas é instantânea, sem
+  // recarregar a cada toque. Instâncias const = estado preservado entre trocas.
   final _telas = const [
     _AbaPatio(),
     TelaMentor(),
@@ -34,18 +40,49 @@ class _TelaHomeState extends State<TelaHome> {
     TelaBiblioteca(),
   ];
 
+  // (chave, titulo, texto) do tutorial de cada aba, por índice. O disparo é
+  // centralizado aqui (não no initState de cada aba): com IndexedStack todas
+  // montam no boot, então mostramos o tutorial só quando o usuário CHEGA na
+  // aba — preservando a descoberta progressiva e evitando 5 modais de uma vez.
+  List<List<String>> get _tutoriais => [
+        ['patio', T.tutorialPatioTitulo, T.tutorialPatioTexto],
+        ['mentor', T.tutorialMentorTitulo, T.tutorialMentorTexto],
+        ['dojo', T.tutorialDojoTitulo, T.tutorialDojoTexto],
+        ['jardim', T.tutorialJardimTitulo, T.tutorialJardimTexto],
+        ['biblioteca', T.tutorialBibliotecaTitulo, T.tutorialBibliotecaTexto],
+      ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Tutorial da aba inicial (Início) após o primeiro frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _mostrarTutorialAba(0));
+  }
+
+  void _mostrarTutorialAba(int i) {
+    if (i < 0 || i >= _tutoriais.length) return;
+    final t = _tutoriais[i];
+    Tutorial.mostrar(context: context, chave: t[0], titulo: t[1], texto: t[2]);
+  }
+
+  void _selecionar(int i) {
+    if (i == _aba) return;
+    setState(() => _aba = i);
+    _mostrarTutorialAba(i);
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomPad = MediaQuery.of(context).padding.bottom;
     return Scaffold(
       backgroundColor: KC.sumi,
       extendBody: true,
-      body: _telas[_aba],
+      body: IndexedStack(index: _aba, children: _telas),
       bottomNavigationBar: Padding(
         padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPad + 12),
         child: _NavBar(
           selecionado: _aba,
-          aoSelecionar: (i) => setState(() => _aba = i),
+          aoSelecionar: _selecionar,
         ),
       ),
     );
@@ -215,15 +252,46 @@ class _AbaPatioState extends State<_AbaPatio> {
   @override
   void initState() {
     super.initState();
-    _carregar();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      Tutorial.mostrar(
-        context: context,
-        chave: 'patio',
-        titulo: T.tutorialPatioTitulo,
-        texto: T.tutorialPatioTexto,
-      );
+    _lerCache();   // paint instantâneo do cache local (se houver)
+    _carregar();   // revalida do Supabase em segundo plano
+    // Tutorial é disparado pelo Home ao chegar na aba (ver _mostrarTutorialAba).
+  }
+
+  // Pinta nome/avatar e práticas a partir do cache local, sem rede. As marcas
+  // de "feito" só são reaproveitadas se o cache for de HOJE.
+  void _lerCache() {
+    final perfil = CacheLocal.lerMapa('patio_perfil');
+    final hab = CacheLocal.lerMapa('patio_habitos');
+    if (perfil == null && hab == null) return;
+    setState(() {
+      if (perfil != null) {
+        _nomeUsuario = (perfil['nome'] as String?)?.trim() ?? '';
+        _avatarUrl = perfil['avatar_url'] as String?;
+      }
+      if (hab != null) {
+        final mesmaData = hab['data'] == formatarDataYMD(DateTime.now());
+        final itens = (hab['itens'] as List?) ?? const [];
+        _habitos = itens.map((e) {
+          final m = Map<String, dynamic>.from(e as Map);
+          return _Habito(
+            id: m['id'] as String,
+            nome: m['nome'] as String,
+            duracao: (m['duracao'] as String?) ?? '',
+            feito: mesmaData && m['feito'] == true,
+          );
+        }).toList();
+      }
+      _carregando = false;
+    });
+  }
+
+  void _gravarCache() {
+    CacheLocal.gravar('patio_perfil', {'nome': _nomeUsuario, 'avatar_url': _avatarUrl});
+    CacheLocal.gravar('patio_habitos', {
+      'data': formatarDataYMD(DateTime.now()),
+      'itens': _habitos
+          .map((h) => {'id': h.id, 'nome': h.nome, 'duracao': h.duracao, 'feito': h.feito})
+          .toList(),
     });
   }
 
@@ -246,6 +314,7 @@ class _AbaPatioState extends State<_AbaPatio> {
         _avatarUrl   = perfil?['avatar_url'] as String?;
         _carregando  = false;
       });
+      _gravarCache();
     } catch (_) {
       if (!mounted) return;
       setState(() => _carregando = false);
@@ -290,6 +359,7 @@ class _AbaPatioState extends State<_AbaPatio> {
 
     // Atualização otimista da UI
     setState(() => _habitos[index].feito = novoEstado);
+    _gravarCache();
 
     try {
       if (novoEstado) {
@@ -297,10 +367,13 @@ class _AbaPatioState extends State<_AbaPatio> {
       } else {
         await BancoPraticas.desmarcarFeita(habito.id);
       }
+      // Reflete streak / próxima prática nos widgets de tela inicial.
+      WidgetSync.sincronizar();
     } catch (_) {
       // Reverte estado se falhar (rede caiu, RLS, etc.)
       if (!mounted) return;
       setState(() => _habitos[index].feito = !novoEstado);
+      _gravarCache();
     }
   }
 
@@ -376,9 +449,9 @@ class _AbaPatioState extends State<_AbaPatio> {
 
           const SizedBox(height: 14),
 
-          // Frase do Mentor — italic com aspas, cor secundária
+          // Frase do dia (rotativa, determinística) — italic com aspas.
           Text(
-            '"${T.mentorFoque}" — ${T.mentor}',
+            '"${T.fraseDoDia()}" — ${T.mentor}',
             style: KT.bodyItalic(),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,

@@ -54,6 +54,47 @@ void main() {
     });
   });
 
+  group('fraseDoDia (frase do dia rotativa e determinística)', () {
+    test('mesma data → mesma frase (determinístico)', () async {
+      await T.definir('pt');
+      final dia = DateTime(2025, 6, 3);
+      expect(T.fraseDoDia(dia), T.fraseDoDia(dia));
+    });
+
+    test('índice sempre dentro do banco, em todos os idiomas', () async {
+      for (final m in T.idiomasDisponiveis) {
+        await T.definir(m['codigo']!);
+        final banco = T.frasesDoDia;
+        expect(banco, isNotEmpty);
+        // varre ~3 meses de datas: nunca pode estourar o índice nem vir vazia
+        for (var i = 0; i < 90; i++) {
+          final frase = T.fraseDoDia(DateTime(2025, 1, 1).add(Duration(days: i)));
+          expect(banco, contains(frase));
+          expect(frase.trim(), isNotEmpty);
+        }
+      }
+    });
+
+    test('frase respeita as regras de marca (sem "!" nem reticências)', () async {
+      for (final m in T.idiomasDisponiveis) {
+        await T.definir(m['codigo']!);
+        for (final f in T.frasesDoDia) {
+          expect(f.contains('!'), isFalse, reason: 'frase com exclamação: $f');
+          expect(f.contains('...'), isFalse, reason: 'frase com reticências: $f');
+        }
+      }
+    });
+
+    test('dias diferentes percorrem o banco (não fica preso numa frase)', () async {
+      await T.definir('pt');
+      final vistas = <String>{};
+      for (var i = 0; i < 60; i++) {
+        vistas.add(T.fraseDoDia(DateTime(2025, 1, 1).add(Duration(days: i))));
+      }
+      expect(vistas.length, greaterThan(1));
+    });
+  });
+
   group('cobertura mínima por idioma (não-PT difere de PT)', () {
     // Conjunto representativo de getters de UI. Se algum cair fora porque
     // um idioma copiou o PT por engano, este teste pega.

@@ -12,5 +12,8 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    // Lado iOS do MethodChannel('kairo.widget') — escreve no App Group e
+    // recarrega as timelines dos widgets.
+    KairoWidgetBridge.register(with: engineBridge.pluginRegistry)
   }
 }

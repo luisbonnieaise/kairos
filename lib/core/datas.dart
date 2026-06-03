@@ -54,3 +54,34 @@ String inicioJanela7Dias(DateTime agora) {
   final base = DateTime(agora.year, agora.month, agora.day);
   return formatarDataYMD(base.subtract(const Duration(days: 6)));
 }
+
+/// Streak diário: nº de dias CONSECUTIVOS, terminando no dia ativo mais recente,
+/// com ao menos uma prática concluída. Conta a partir de HOJE se hoje tem
+/// conclusão; senão a partir de ONTEM (o dia de hoje ainda está em aberto, não
+/// quebra o streak). Se nem hoje nem ontem têm conclusão → 0.
+///
+/// `datasFeitas` é o set de "YYYY-MM-DD" em que houve ao menos uma conclusão.
+/// Função pura (sem rede) — usada pela sincronização dos widgets.
+int streakConsecutivo({
+  required DateTime agora,
+  required Set<String> datasFeitas,
+}) {
+  final base = DateTime(agora.year, agora.month, agora.day);
+  DateTime cursor;
+  if (datasFeitas.contains(formatarDataYMD(base))) {
+    cursor = base;
+  } else {
+    final ontem = base.subtract(const Duration(days: 1));
+    if (datasFeitas.contains(formatarDataYMD(ontem))) {
+      cursor = ontem;
+    } else {
+      return 0;
+    }
+  }
+  var streak = 0;
+  while (datasFeitas.contains(formatarDataYMD(cursor))) {
+    streak++;
+    cursor = cursor.subtract(const Duration(days: 1));
+  }
+  return streak;
+}
