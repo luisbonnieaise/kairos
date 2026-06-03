@@ -218,3 +218,4 @@ Apenas documente; não há código.
 Após 1.1–1.6: nenhum cliente consegue forçar Sonnet, nenhum rate limit é burlável, `relatorio-semanal` não aceita data arbitrária, erros não vazam, e existe `is_premium()` pronto para a Fase 03 plugar a monetização.
 
 Próximo: [`02-p1-hardening.md`](02-p1-hardening.md) ou, em paralelo, [`03-stripe-billing.md`](03-stripe-billing.md).
+

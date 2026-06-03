@@ -71,3 +71,4 @@ Esta documentação é **executável**: cada fase tem objetivo, contexto, arquiv
 | **RLS** | Row Level Security do Postgres |
 | **Gating** | Decisão server-side que libera/bloqueia recurso conforme assinatura |
 | **Idempotência** | Processar o mesmo evento N vezes = mesmo efeito de processar 1 vez |
+

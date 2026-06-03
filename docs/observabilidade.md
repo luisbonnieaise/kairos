@@ -195,3 +195,4 @@ Configurar como **alertas** nos consoles correspondentes; quando dispararem, ir 
 Esta página cobre **observabilidade dentro do banco** (uso_ia, fila de cron, subscriptions). Os alertas *fora do app* (limites de gasto, spend caps) ficam em [`06-runbook-deploy.md §9 "Alertas de custo"`](06-runbook-deploy.md#9-alertas-de-custo) e são responsabilidade do dono preencher.
 
 Princípio: **uso_ia é a fonte da verdade interna**; Anthropic Console é a fonte externa. Discrepância sustentada entre as duas indica vazamento — vasculhar logs das Edge Functions.
+

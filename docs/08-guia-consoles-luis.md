@@ -281,3 +281,4 @@ Supabase / App
 ---
 
 Volte ao [índice](README.md). Spec técnica em [`07-billing-multiplataforma.md`](07-billing-multiplataforma.md).
+

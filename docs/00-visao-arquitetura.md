@@ -133,3 +133,4 @@ Nada disso entra no bundle do Flutter exceto `SUPABASE_URL` e `SUPABASE_ANON_KEY
 ---
 
 Próximo: [`01-p0-custo-seguranca.md`](01-p0-custo-seguranca.md).
+

@@ -360,3 +360,4 @@ A maior fonte de crescimento é `public.mensagens` (~22 GB/ano no cenário 30k M
 ---
 
 Fim da documentação. Volte ao [índice](README.md) para acompanhar o status das fases.
+

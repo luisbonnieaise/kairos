@@ -273,3 +273,4 @@ Apenas documentar o roteiro; sem código.
 Kairo Premium operante: pagamento PCI-safe via Stripe, assinatura como verdade no Postgres sincronizada por webhook **idempotente e concorrente**, e gating server-side que efetivamente fecha o vetor de custo 4.1. Cliente nunca consegue se autoconceder Premium nem forçar modelo caro.
 
 Próximo: [`04-escala-30k.md`](04-escala-30k.md).
+

@@ -544,3 +544,4 @@ Apenas documentar os roteiros; sem código.
 Entitlement único e canônico no Postgres, alimentado por 3 providers via webhooks idempotentes, concorrentes e tolerantes a fora-de-ordem; compra na web (Stripe, login antes) e in-app (Apple/Google IAP), todas convergindo para `is_premium()`; app conforme às diretrizes (vende IAP, honra web, sem anti-steering). Cliente nunca se autoconcede Premium nem força modelo caro.
 
 Próximo: [`08-guia-consoles-luis.md`](08-guia-consoles-luis.md).
+

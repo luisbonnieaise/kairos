@@ -144,3 +144,4 @@ Somente documentação.
 Burst de domingo eliminado (cron espalhado e idempotente), índices auditados para 30k MAUs, observabilidade e plano de capacidade documentados. Custo de IA agora é previsível e monitorável.
 
 Próximo: [`05-qualidade-testes.md`](05-qualidade-testes.md).
+
