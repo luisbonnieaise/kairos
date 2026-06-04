@@ -1,7 +1,7 @@
 # Build iOS (IPA) via Codemagic → TestFlight
 
 Projeto já preparado:
-- Bundle ID alterado de `com.example.kairo` → **`com.kairo.app`**
+- Bundle ID alterado de `com.example.kairo` → **`com.thekairo.app`**
 - `codemagic.yaml` criado (workflow `ios-testflight`)
 - `.env` é recriado no build (não vai pro git — contém a chave Supabase)
 
@@ -13,7 +13,7 @@ O resto exige ações na Apple e no painel do Codemagic (não automatizável daq
 
 1. Em **App Store Connect → Apps → +**, crie o app:
    - Plataforma: iOS
-   - Bundle ID: `com.kairo.app` (se não existir, crie em
+   - Bundle ID: `com.thekairo.app` (se não existir, crie em
      **Certificates, IDs & Profiles → Identifiers**)
    - SKU: `kairo`
 2. Gere uma **App Store Connect API Key**:
