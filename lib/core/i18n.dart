@@ -343,6 +343,61 @@ class T {
     'Kauf konnte nicht abgeschlossen werden. Versuche es erneut.',
   );
 
+  // ── PORTÃO DE ASSINATURA (hard paywall na entrada) ──────────────────────────
+  static String get portaoTitulo => _g(
+    'Comece sua jornada',
+    'Begin your journey',
+    'Comienza tu viaje',
+    'Beginne deine Reise',
+  );
+  static String get portaoChamada => _g(
+    'O Kairo é uma prática diária de evolução. Experimente 7 dias grátis.',
+    'Kairo is a daily practice of growth. Try it free for 7 days.',
+    'Kairo es una práctica diaria de evolución. Pruébalo gratis 7 días.',
+    'Kairo ist eine tägliche Praxis der Entwicklung. 7 Tage gratis testen.',
+  );
+  static String get portaoComecarTeste => _g(
+    'Começar teste grátis',
+    'Start free trial',
+    'Comenzar prueba gratis',
+    'Gratis-Test starten',
+  );
+  // Divulgação exigida pela Apple (Guideline 3.1.2) e Google. O preço/período
+  // de cada plano aparece no respectivo cartão (dados da loja).
+  static String get portaoRenovacao => _g(
+    'O teste dura 7 dias. Depois, a assinatura renova automaticamente pelo preço do plano até você cancelar nas configurações da loja. Cancele quando quiser.',
+    'The trial lasts 7 days. After that, the subscription renews automatically at the plan price until you cancel in your store settings. Cancel anytime.',
+    'La prueba dura 7 días. Después, la suscripción se renueva automáticamente al precio del plan hasta que canceles en los ajustes de la tienda. Cancela cuando quieras.',
+    'Der Test dauert 7 Tage. Danach verlängert sich das Abo automatisch zum Planpreis, bis du in den Store-Einstellungen kündigst. Jederzeit kündbar.',
+  );
+  static String get portaoTesteBadge => _g(
+    '7 dias grátis',
+    '7 days free',
+    '7 días gratis',
+    '7 Tage gratis',
+  );
+  static String get portaoAoAssinar => _g(
+    'Ao assinar, você concorda com os',
+    'By subscribing, you agree to the',
+    'Al suscribirte, aceptas los',
+    'Mit dem Abo akzeptierst du die',
+  );
+  static String get termosDeUso => _g(
+    'Termos de Uso',
+    'Terms of Use',
+    'Términos de Uso',
+    'Nutzungsbedingungen',
+  );
+  static String get politicaPrivacidade => _g(
+    'Política de Privacidade',
+    'Privacy Policy',
+    'Política de Privacidad',
+    'Datenschutzrichtlinie',
+  );
+  static String get conector_e => _g('e', 'and', 'y', 'und');
+  static String get periodoMes => _g('mês', 'month', 'mes', 'Monat');
+  static String get periodoAno => _g('ano', 'year', 'año', 'Jahr');
+
   // ── PÁTIO (INÍCIO) ─────────────────────────────────────────────────────────
   static String get mentorLabel => _g('MENTOR', 'MENTOR', 'MENTOR', 'MENTOR');
   static String get mentorFoque => _g(

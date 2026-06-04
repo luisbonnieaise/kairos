@@ -20,19 +20,34 @@
 --   - A Edge Function tem idempotência por (user_id, semana_inicio) em
 --     relatorios_semanais — chamada duplicada não regera com Claude.
 --
--- Pré-requisitos (preencher via SQL Editor; ver docs/06-runbook-deploy.md §6):
---   ALTER DATABASE postgres SET app.cron_secret = '<CRON_SECRET>';
---   ALTER DATABASE postgres SET app.cron_relatorio_url =
---     'https://<projeto>.supabase.co/functions/v1/relatorio-semanal';
+-- Pré-requisitos (inserir em public.app_config; ver docs/06-runbook-deploy.md §6):
+--   insert into public.app_config(chave, valor) values
+--     ('cron_secret', '<CRON_SECRET>'),
+--     ('cron_relatorio_url', 'https://<projeto>.supabase.co/functions/v1/relatorio-semanal')
+--   on conflict (chave) do update set valor = excluded.valor, updated_at = now();
 --
 -- O secret é o MESMO valor de Deno.env CRON_SECRET configurado nas Edge
--- Function secrets. URL e secret ficam em GUC (current_setting) — não em
--- texto puro nas funções — para facilitar rotação.
+-- Function secrets. Ficam em app_config (não em GUC: o Supabase bloqueia
+-- ALTER DATABASE SET app.* para postgres) — tabela com RLS sem policies, lida
+-- só pelas funções security definer. Rotacionar = UPDATE na tabela + secret.
 -- ============================================================================
 
 -- ── Extensões ───────────────────────────────────────────────────────────────
 create extension if not exists pg_cron with schema extensions;
 create extension if not exists pg_net  with schema extensions;
+
+-- ── Config interna (substitui os GUCs app.*) ────────────────────────────────
+-- O Supabase bloqueia ALTER DATABASE/ROLE SET app.* para o papel postgres, então
+-- a config do dispatcher (URL + secret do cron) vive aqui. RLS habilitado SEM
+-- policies => invisível a anon/auth; só funções security definer (donas) e o
+-- service_role leem. Os VALORES são inseridos fora do versionamento (contêm
+-- segredo) — ver docs/06-runbook-deploy.md §6.
+create table if not exists public.app_config (
+  chave       text        primary key,
+  valor       text        not null,
+  updated_at  timestamptz not null default now()
+);
+alter table public.app_config enable row level security;
 
 -- ── Fila de envio ───────────────────────────────────────────────────────────
 -- 1 linha = 1 disparo pendente p/ Edge Function relatorio-semanal (modo CRON).
@@ -125,14 +140,17 @@ security definer
 set search_path = public
 as $$
 declare
-  v_url    text := current_setting('app.cron_relatorio_url', true);
-  v_secret text := current_setting('app.cron_secret', true);
+  -- Config lida de public.app_config (não de GUC: o Supabase bloqueia
+  -- ALTER DATABASE SET app.* para o papel postgres). A função é security
+  -- definer e dona da tabela, então lê apesar da RLS sem policies.
+  v_url    text := (select valor from public.app_config where chave = 'cron_relatorio_url');
+  v_secret text := (select valor from public.app_config where chave = 'cron_secret');
   v_count  int  := 0;
   r        record;
   v_req_id bigint;
 begin
   if v_url is null or v_url = '' or v_secret is null or v_secret = '' then
-    -- Setup incompleto: ALTER DATABASE … SET app.cron_relatorio_url/secret.
+    -- Setup incompleto: inserir cron_relatorio_url/cron_secret em app_config.
     -- Silencioso por design (cron a cada minuto não deve gerar ruído).
     return 0;
   end if;

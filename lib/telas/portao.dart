@@ -1,0 +1,338 @@
+import 'package:flutter/material.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../core/kairo_tema.dart';
+import '../core/billing.dart';
+import '../core/i18n.dart';
+import '../main.dart';
+import 'home.dart';
+
+// URLs legais exigidas pela Apple/Google no paywall. SUBSTITUIR pelas URLs
+// reais quando publicadas (ex.: páginas da landing lp-kairo).
+// TODO(produto): confirmar/atualizar estes endereços.
+const String kUrlTermos = 'https://kairo.app/termos';
+const String kUrlPrivacidade = 'https://kairo.app/privacidade';
+
+/// Portão de assinatura (hard paywall). Fica ENTRE o login e o app: sem
+/// entitlement (`active`/`trialing`), o usuário não entra. Substitui as antigas
+/// entradas diretas em [TelaHome] (splash, pós-login, pós-onboarding).
+///
+/// Conformidade: a compra é via IAP (Billing). Sem link externo de pagamento.
+/// O usuário SEMPRE pode "Sair" (Apple não permite prender) e "Restaurar
+/// compras". Um Premium comprado na web (Stripe) é honrado e passa direto.
+class TelaPortao extends StatefulWidget {
+  const TelaPortao({super.key});
+
+  @override
+  State<TelaPortao> createState() => _TelaPortaoState();
+}
+
+class _TelaPortaoState extends State<TelaPortao> {
+  bool _checando = true;
+  bool _processando = false;
+  List<ProductDetails> _produtos = const [];
+  String? _erro;
+
+  @override
+  void initState() {
+    super.initState();
+    Billing.instance.eventos.addListener(_aoEvento);
+    _verificarEntrar();
+  }
+
+  @override
+  void dispose() {
+    Billing.instance.eventos.removeListener(_aoEvento);
+    super.dispose();
+  }
+
+  // Verifica o entitlement: se já tem acesso (inclusive da web), entra direto;
+  // senão carrega os produtos e mostra o paywall.
+  Future<void> _verificarEntrar() async {
+    final premium = await Billing.instance.refresh();
+    if (!mounted) return;
+    if (premium) {
+      _entrarNoApp();
+      return;
+    }
+    final produtos = await Billing.instance.produtos();
+    if (!mounted) return;
+    setState(() {
+      _produtos = produtos;
+      _checando = false;
+    });
+  }
+
+  void _entrarNoApp() {
+    Navigator.pushReplacement(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, _, _) => const TelaHome(),
+        transitionsBuilder: (_, anim, _, child) =>
+            FadeTransition(opacity: anim, child: child),
+        transitionDuration: const Duration(milliseconds: 500),
+      ),
+    );
+  }
+
+  void _aoEvento() {
+    final ev = Billing.instance.eventos.value;
+    if (ev == null || !mounted) return;
+    switch (ev) {
+      case BillingEvento.processando:
+        setState(() {
+          _processando = true;
+          _erro = null;
+        });
+        break;
+      case BillingEvento.sucesso:
+      case BillingEvento.restaurado:
+        // Compra/restauração ok — reavalia e entra no app se virou premium.
+        setState(() => _processando = false);
+        _verificarEntrar();
+        break;
+      case BillingEvento.cancelada:
+        setState(() => _processando = false);
+        break;
+      case BillingEvento.erro:
+        setState(() {
+          _processando = false;
+          _erro = T.assinaturaErro;
+        });
+        break;
+    }
+  }
+
+  Future<void> _assinar(ProductDetails p) async {
+    setState(() => _erro = null);
+    await Billing.instance.comprar(p);
+  }
+
+  Future<void> _restaurar() async {
+    setState(() => _erro = null);
+    await Billing.instance.restaurar();
+  }
+
+  Future<void> _sair() async {
+    await supabase.auth.signOut();
+    Billing.instance.limparCache();
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const TelaBoasVindas()),
+      (route) => false,
+    );
+  }
+
+  Future<void> _abrirLink(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri != null) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  String _periodo(ProductDetails p) {
+    final id = p.id.toLowerCase();
+    if (id.contains('year') || id.contains('annual') || id.contains('anu')) {
+      return T.periodoAno;
+    }
+    if (id.contains('month') || id.contains('mens')) return T.periodoMes;
+    return '';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // PopScope(canPop:false): o portão não é dispensável pelo botão voltar.
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        backgroundColor: KC.sumi,
+        body: _checando
+            ? Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 1.5, color: KC.kin),
+                ),
+              )
+            : SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 48),
+                              Text(T.portaoTitulo, style: KT.displayL()),
+                              const SizedBox(height: 16),
+                              Text(T.portaoChamada, style: KT.bodySerif(cor: KC.cinza)),
+
+                              const SizedBox(height: 40),
+                              KT.divisor(),
+                              const SizedBox(height: 28),
+
+                              _Beneficio(texto: T.premiumBeneficioMentor),
+                              const SizedBox(height: 14),
+                              _Beneficio(texto: T.premiumBeneficioCarta),
+                              const SizedBox(height: 14),
+                              _Beneficio(texto: T.premiumBeneficioLimites),
+
+                              const SizedBox(height: 36),
+
+                              if (_produtos.isEmpty)
+                                Text(T.premiumSemProdutos, style: KT.caption(cor: KC.fumo))
+                              else
+                                ..._produtos.map(
+                                  (p) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: _CartaoPlano(
+                                      titulo: p.title,
+                                      preco: p.price,
+                                      periodo: _periodo(p),
+                                      habilitado: !_processando,
+                                      onTap: () => _assinar(p),
+                                    ),
+                                  ),
+                                ),
+
+                              if (_erro != null) ...[
+                                const SizedBox(height: 16),
+                                Text(_erro!, style: KT.caption(cor: KC.aka)),
+                              ],
+
+                              const SizedBox(height: 20),
+                              // Divulgação obrigatória (Apple 3.1.2 / Google).
+                              Text(T.portaoRenovacao, style: KT.caption(cor: KC.fumo)),
+                              const SizedBox(height: 12),
+                              _LinhaLegal(onTermos: () => _abrirLink(kUrlTermos),
+                                  onPrivacidade: () => _abrirLink(kUrlPrivacidade)),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // Restaurar + Sair (escape obrigatório).
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          TextButton(
+                            onPressed: _processando ? null : _restaurar,
+                            child: Text(T.premiumRestaurar, style: KT.caption(cor: KC.cinza)),
+                          ),
+                          TextButton(
+                            onPressed: _processando ? null : _sair,
+                            child: Text(T.sair, style: KT.caption(cor: KC.cinza)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+/// Cartão de plano: título + preço da loja + badge de teste + CTA.
+class _CartaoPlano extends StatelessWidget {
+  final String titulo;
+  final String preco;
+  final String periodo;
+  final bool habilitado;
+  final VoidCallback onTap;
+  const _CartaoPlano({
+    required this.titulo,
+    required this.preco,
+    required this.periodo,
+    required this.habilitado,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final precoLinha = periodo.isEmpty ? preco : '$preco/$periodo';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: habilitado ? onTap : null,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          decoration: BoxDecoration(
+            color: KC.washi,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('$titulo · $precoLinha', style: KT.body(cor: KC.fundo)),
+                    const SizedBox(height: 4),
+                    Text(T.portaoTesteBadge, style: KT.caption(cor: KC.sumi)),
+                  ],
+                ),
+              ),
+              Text(T.portaoComecarTeste, style: KT.body(cor: KC.fundo)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LinhaLegal extends StatelessWidget {
+  final VoidCallback onTermos;
+  final VoidCallback onPrivacidade;
+  const _LinhaLegal({required this.onTermos, required this.onPrivacidade});
+
+  @override
+  Widget build(BuildContext context) {
+    final estilo = KT.caption(cor: KC.fumo);
+    final link = KT.caption(cor: KC.cinza);
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text('${T.portaoAoAssinar} ', style: estilo),
+        GestureDetector(onTap: onTermos, child: Text(T.termosDeUso, style: link)),
+        Text(' ${T.conector_e} ', style: estilo),
+        GestureDetector(onTap: onPrivacidade, child: Text(T.politicaPrivacidade, style: link)),
+        Text('.', style: estilo),
+      ],
+    );
+  }
+}
+
+class _Beneficio extends StatelessWidget {
+  final String texto;
+  const _Beneficio({required this.texto});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 6, right: 12),
+          child: Container(
+            width: 4,
+            height: 4,
+            decoration: BoxDecoration(
+              color: KC.kin,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+        Expanded(child: Text(texto, style: KT.body())),
+      ],
+    );
+  }
+}

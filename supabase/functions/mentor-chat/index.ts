@@ -221,16 +221,26 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // ── Gating server-side: o MODELO é decidido aqui, nunca pelo client ──────
-    // premium vem da função canônica is_premium (via service role). Enquanto
-    // a Fase 03 não criar subscriptions, is_premium retorna false p/ todos
-    // (Sonnet desligado para todos — fallback Haiku).
+    // ── Gating server-side: assinatura + MODELO, decididos aqui (nunca client) ─
+    // premium vem da função canônica is_premium (via service role): status in
+    // (active,trialing,grace) AND current_period_end > now.
     const { data: premiumData, error: premiumErr } = await supabaseService
       .rpc('is_premium', { uid: user.id });
     if (premiumErr) {
       console.error('Erro ao avaliar is_premium:', premiumErr.message);
     }
     const premium = premiumData === true;
+
+    // Hard paywall: sem plano free — o recurso de IA exige assinatura
+    // ativa/trial. Defesa em profundidade: com o portão no app, um não-assinante
+    // não chega aqui; este 403 cobre chamadas diretas à função.
+    if (!premium) {
+      return new Response(JSON.stringify({ error: 'precisa_assinar' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const modelo = decidirModelo(premium, prefereSonnet);
 
     // ── Rate limit não-burlável: conta o ledger uso_ia (escrito só por esta

@@ -6,7 +6,7 @@ import '../core/banco.dart';
 import '../core/i18n.dart';
 import '../main.dart';
 import 'onboarding.dart';
-import 'home.dart';
+import 'portao.dart';
 
 class TelaAuth extends StatefulWidget {
   final bool ehCadastro;
@@ -123,7 +123,8 @@ class _TelaAuthState extends State<TelaAuth> {
         Navigator.pushReplacement(
           context,
           PageRouteBuilder(
-            pageBuilder: (_, __, ___) => const TelaHome(),
+            // Entra pelo PORTÃO (hard paywall): libera TelaHome só com assinatura.
+            pageBuilder: (_, __, ___) => const TelaPortao(),
             transitionsBuilder: (_, anim, __, child) =>
                 FadeTransition(opacity: anim, child: child),
             transitionDuration: const Duration(milliseconds: 600),

@@ -14,7 +14,7 @@ import 'core/billing.dart';
 import 'core/notificacoes.dart';
 import 'core/i18n.dart';
 import 'telas/auth.dart';
-import 'telas/home.dart';
+import 'telas/portao.dart';
 import 'telas/selecao_idioma.dart';
 
 void main() async {
@@ -170,11 +170,13 @@ class _TelaSplashState extends State<TelaSplash>
 
       final logado = supabase.auth.currentSession != null;
 
-      // Se está logado, sincroniza o idioma do perfil e reagenda lembrete
+      // Se está logado, sincroniza o idioma do perfil e reagenda lembrete.
+      // Entra pelo PORTÃO de assinatura (hard paywall): ele decide se libera
+      // o TelaHome (entitlement ativo) ou exibe o paywall obrigatório.
       if (logado) {
         _sincronizarIdioma();
         _reagendarLembrete();
-        _irPara(const TelaHome());
+        _irPara(const TelaPortao());
         return;
       }
 

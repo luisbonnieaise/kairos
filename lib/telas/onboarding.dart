@@ -4,7 +4,7 @@ import '../core/kairo_tema.dart';
 import '../core/i18n.dart';
 import '../core/banco.dart';
 import '../core/notificacoes.dart';
-import 'home.dart';
+import 'portao.dart';
 
 class TelaOnboarding extends StatefulWidget {
   const TelaOnboarding({super.key});
@@ -72,7 +72,8 @@ class _TelaOnboardingState extends State<TelaOnboarding> {
     Navigator.pushReplacement(
       context,
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const TelaHome(),
+        // Novo usuário entra pelo PORTÃO (hard paywall) antes do app.
+        pageBuilder: (_, __, ___) => const TelaPortao(),
         transitionsBuilder: (_, anim, __, child) =>
             FadeTransition(opacity: anim, child: child),
         transitionDuration: const Duration(milliseconds: 600),
