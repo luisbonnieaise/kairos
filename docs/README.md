@@ -1,6 +1,6 @@
 # Kairo · Documentação de Implementação
 
-> Plano de execução para levar o Kairo de "base sólida" a **produto pronto, seguro e pago, suportando 30.000 MAUs** com pagamentos Stripe em tempo real.
+> Plano de execução para levar o Kairo de "base sólida" a **produto pronto, seguro e pago, suportando 30.000 MAUs** com pagamentos via **IAP (Apple/Google) no mobile + Stripe na web**.
 
 Esta documentação é **executável**: cada fase tem objetivo, contexto, arquivos afetados, passo a passo e **prompts prontos** para colar no agente de implementação (Claude Code), na ordem. Cada prompt termina com critérios de aceitação verificáveis.
 
@@ -29,8 +29,9 @@ Esta documentação é **executável**: cada fase tem objetivo, contexto, arquiv
 | 04 | [Escala para 30k MAUs](04-escala-30k.md) | Índices, carta semanal via cron, observabilidade, modelo de custo | 🟡 P1 | ☐ |
 | 05 | [Qualidade & Testes](05-qualidade-testes.md) | Testes da lógica crítica, CI, README, higiene de repo | 🟢 P2 | ☐ |
 | 06 | [Runbook de Deploy & Go-Live](06-runbook-deploy.md) | Matriz de secrets, ordem de deploy, checklist final, rollback | Operação | ☐ |
-| 07 | [Billing Multiplataforma](07-billing-multiplataforma.md) | **Spec vigente:** Stripe (web) + Apple IAP + Google Play, entitlement único, 3 webhooks idempotentes, conformidade | 🔴 P0 | ☐ |
+| 07 | [Billing Multiplataforma](07-billing-multiplataforma.md) | **Spec vigente:** Stripe (web) + Apple IAP + Google Play, entitlement único, 3 webhooks idempotentes, conformidade | 🔴 P0 | 🔵 implementado (Apple) |
 | 08 | [Guia de Consoles (Luis)](08-guia-consoles-luis.md) | Passo a passo nos painéis Stripe/Apple/Google/Supabase: produtos, API keys, webhooks/eventos, matriz de secrets | Operação | ☐ |
+| 09 | [IAP, Hard Paywall & Go-Live](09-iap-paywall-go-live.md) | **Registro de implementação:** o que foi construído/deployado/configurado + checklist de go-live restante. Supersede o checkout-no-app dos docs 03/06 | Operação | 🔵 a validar (sandbox) |
 
 ---
 
@@ -46,7 +47,12 @@ Esta documentação é **executável**: cada fase tem objetivo, contexto, arquiv
  └─> 04 (escala: cron, índices, observabilidade)
  └─> 05 (testes + higiene)
  └─> 06 (deploy + go-live checklist)
+ └─> 09 (registro do que foi implementado no IAP/paywall + go-live vigente)
 ```
+
+> **Status:** ☐ não iniciado · 🔵 implementado mas a validar (sandbox/produção) · ✅ validado.
+> O billing já foi **implementado e deployado** (lado Apple); ver o estado real e o
+> que falta em [`09-iap-paywall-go-live.md`](09-iap-paywall-go-live.md).
 
 **Dependência dura:** o gating de modelo Sonnet reusa o ponto de decisão server-side criado na Fase 01. Faça a 01 antes da parte de gating da 07. **O doc 03 foi parcialmente substituído pela Fase 07** (billing multiplataforma); siga a 07 como spec vigente e use a 03 apenas como referência dos princípios de concorrência/idempotência.
 

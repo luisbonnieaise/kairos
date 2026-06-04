@@ -2,7 +2,7 @@
 
 > Sistema pessoal de evolução: um mentor sereno, um jardim de reflexões diárias, um dôjo de práticas e uma carta semanal do Mentor. Voltado a sustentar um ritmo — sem hype, sem barulho.
 
-App Flutter (iOS/Android) com backend em Supabase (Postgres + Edge Functions Deno), IA via Claude (Anthropic) e assinatura Premium via Stripe.
+App Flutter (iOS/Android) com backend em Supabase (Postgres + Edge Functions Deno), IA via Claude (Anthropic) e assinatura Premium via **In-App Purchase** (Apple/Google) no mobile + Stripe na web. O acesso é por assinatura (teste de 7 dias, sem plano free) — ver [docs/09-iap-paywall-go-live.md](docs/09-iap-paywall-go-live.md).
 
 ---
 
@@ -13,9 +13,9 @@ App Flutter (iOS/Android) com backend em Supabase (Postgres + Edge Functions Den
 | App | Flutter 3 (Material 3), 4 idiomas (pt/en/es/de) |
 | Auth & DB | Supabase (Postgres + RLS) |
 | Backend | Supabase Edge Functions (Deno + TypeScript) |
-| IA | Claude Haiku (free) / Sonnet (Premium) via API Anthropic |
-| Pagamento | Stripe Checkout + Webhook |
-| Cron | `pg_cron` + `pg_net` no Supabase |
+| IA | Claude Haiku / Sonnet (assinantes) via API Anthropic |
+| Pagamento | IAP StoreKit/Play Billing (mobile) + Stripe (web); entitlement único em `subscriptions` |
+| Cron | `pg_cron` + `pg_net` no Supabase (config em `app_config`) |
 | Deep link | `kairo://` (Android + iOS) |
 
 ---
@@ -58,11 +58,13 @@ Schemas em [scripts/](scripts/), idempotentes, rodam **na ordem numerada** no SQ
 | 05 | `05_relatorios_semanais.sql` | Cartas semanais |
 | 06 | `06_storage_avatares.sql` | Bucket de avatares |
 | 07 | `07_uso_ia.sql` | Ledger server-side de uso de IA + `is_premium()` |
-| 08 | `08_subscriptions.sql` | Tabela `subscriptions` (espelho Stripe) + `stripe_events` |
-| 09 | `09_cron_relatorios.sql` | Cron de carta semanal (espalhamento 50/min) |
+| 08 | `08_subscriptions.sql` | Tabela `subscriptions` + `stripe_events` (base do billing) |
+| 09 | `09_cron_relatorios.sql` | Cron de carta semanal (50/min) + `app_config` (config do cron) |
 | 10 | `10_indices_revisao.sql` | Auditoria de índices para 30k MAUs |
+| 11 | `11_migracao_categorias_enum.sql` | Migração de `praticas.categoria` para enums ASCII |
+| 12 | `12_billing_multiplataforma.sql` | Billing agnóstico de provider (Apple/Google/Stripe): `billing_events`, `is_premium` com `grace`, RPC `aplicar_estado_assinatura` |
 
-Toda tabela tem **RLS ativo** — cada usuário só vê/edita as próprias linhas. Tabelas de billing (`subscriptions`, `stripe_events`) e o ledger (`uso_ia`) **não têm policy de write** — só o backend (via service role) escreve.
+Toda tabela tem **RLS ativo** — cada usuário só vê/edita as próprias linhas. Tabelas de billing (`subscriptions`, `billing_events`) e o ledger (`uso_ia`) **não têm policy de write** — só o backend (via service role) escreve.
 
 ---
 
@@ -70,12 +72,16 @@ Toda tabela tem **RLS ativo** — cada usuário só vê/edita as próprias linha
 
 Vivem em [supabase/functions/](supabase/functions/) (Deno + TypeScript). Lógica pura compartilhada em [_shared/](supabase/functions/_shared/) é testável via `deno test`.
 
-| Função | Função |
+| Função | Papel |
 |---|---|
-| `mentor-chat` | Conversa com o Mentor; rate limit não-burlável via `uso_ia` |
+| `mentor-chat` | Conversa com o Mentor; gating de assinatura (`precisa_assinar`) + rate limit via `uso_ia` |
 | `relatorio-semanal` | Carta semanal (modo usuário + modo CRON com `x-cron-secret`) |
-| `stripe-checkout` | Cria sessão de Checkout (sem segredo no client) |
-| `stripe-webhook` | Sincroniza `subscriptions` (idempotente + concorrente) |
+| `verify-purchase` | Desbloqueio imediato pós-compra IAP (valida ownership, escreve entitlement) |
+| `apple-webhook` | App Store Server Notifications V2 (verifica JWS + pino do root CA) |
+| `google-webhook` | Real-time Developer Notifications do Google Play (RTDN) |
+| `stripe-webhook` | Sincroniza `subscriptions` via RPC canônica (idempotente; canal web) |
+
+Todos os caminhos de escrita do entitlement passam pela RPC `aplicar_estado_assinatura` (`billing_events` deduplica os 3 providers). Detalhes em [docs/07](docs/07-billing-multiplataforma.md) e [docs/09](docs/09-iap-paywall-go-live.md).
 
 Deploy + matriz de secrets em [docs/06-runbook-deploy.md](docs/06-runbook-deploy.md).
 

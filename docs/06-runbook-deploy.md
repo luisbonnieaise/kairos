@@ -2,6 +2,23 @@
 
 Operação. Use como **checklist final**. Algumas seções são preenchidas/expandidas pelos prompts das fases anteriores (indicado). Não faça go-live de pagamento com qualquer item ☐ pendente.
 
+> ⚠️ **Atualização (jun/2026) — billing migrou para IAP + hard paywall.**
+> Várias seções abaixo foram escritas para o modelo antigo (Stripe-checkout
+> dentro do app) e estão **parcialmente obsoletas**. O estado real e o checklist
+> vigente de go-live estão em **[`09-iap-paywall-go-live.md`](09-iap-paywall-go-live.md)**.
+> Em particular:
+> - **§2 Matriz de secrets:** acrescentar `APPLE_*` (private key, key id, issuer,
+>   bundle, env, root CA) e `GOOGLE_*`. `STRIPE_PRICE_PREMIUM` saiu (sem
+>   `stripe-checkout`). `STRIPE_*` só para o canal **web** (`lp-kairo`).
+> - **§3 Deploy:** `stripe-checkout` foi **removido**; acrescentar `verify-purchase`,
+>   `apple-webhook`, `google-webhook`. SQL aplicado vai até o **12** (não 10).
+> - **§4 Stripe / deep-link `kairo://`:** referem-se ao checkout no app — **não se
+>   aplicam mais** (checkout é web; mobile é IAP).
+> - **§6 Cron:** os GUCs `ALTER DATABASE SET app.*` são **bloqueados** neste
+>   Supabase; a config vive em `public.app_config` (ver `09 §3` e `scripts/09`).
+> - **§7 Validações de billing:** o roteiro Stripe vira **teste sandbox de IAP**
+>   (ver `07 §7.11`).
+
 ---
 
 ## 1. Ordem de deploy
