@@ -8,9 +8,6 @@ workflows:
       # Codemagic > Teams > Integrations > App Store Connect.
       app_store_connect: kairo_asc_key
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.thekairo.app
       flutter: stable
       xcode: latest
       cocoapods: default
@@ -32,11 +29,12 @@ workflows:
       - name: Instalar CocoaPods
         script: |
           find . -name "Podfile" -execdir pod install \;
-      - name: Configurar assinatura (cria certificado e profile se faltarem)
+      - name: Configurar assinatura (certificado dedicado de CI + profile)
         script: |
           keychain initialize
           app-store-connect fetch-signing-files "com.thekairo.app" \
             --type IOS_APP_STORE \
+            --certificate-key="@env:CERTIFICATE_PRIVATE_KEY" \
             --create
           keychain add-certificates
           xcode-project use-profiles
