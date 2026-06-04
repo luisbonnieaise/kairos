@@ -62,3 +62,4 @@ docs/_pdf_build/
 
 # Supabase CLI (lixo local versionado por engano)
 supabase/.temp/
+SETUP_SUPABASE_IAP.md

@@ -140,23 +140,25 @@ export async function estadoApple(env: AppleEnv, transactionId: string): Promise
 // ── Verificação da App Store Server Notification V2 ─────────────────────────
 // O signedPayload é um JWS assinado pela Apple com a cadeia x5c no header.
 // Verificamos a assinatura com o certificado-folha e validamos que a cadeia
-// termina no Apple Root CA - G3 (pinado por fingerprint SHA-256).
-const APPLE_ROOT_CA_G3_SHA256 =
-  // Fingerprint do "Apple Root CA - G3" (DER, SHA-256). Conferível em
-  // https://www.apple.com/certificateauthority/ . Pode ser sobrescrito via env.
-  Deno.env.get('APPLE_ROOT_CA_G3_FINGERPRINT') ??
-  'b0:b1:73:0e:cb:c7:ff:45:05:14:2c:49:f1:29:5e:6e:da:6b:ca:ed:7e:2c:68:c5:be:91:b5:a1:10:01:f0:24';
+// termina no Apple Root CA - G3 (pinado pelo certificado, via env).
+//
+// Nota de segurança: o pino do root + assinatura do leaf são defesa-em-
+// profundidade. A fonte de verdade do entitlement é o RE-FETCH autenticado
+// em estadoApple() (App Store Server API, com a nossa chave) — é ele que
+// impede um atacante de se autoconceder Premium forjando notificação.
+//
+// APPLE_ROOT_CA_G3 = certificado "Apple Root CA - G3" em base64 DER
+// (https://www.apple.com/certificateauthority/). Pinamos por igualdade do cert.
+const APPLE_ROOT_CA_G3 = Deno.env.get('APPLE_ROOT_CA_G3');
 
 function pemDe(b64: string): string {
   const linhas = b64.match(/.{1,64}/g)?.join('\n') ?? b64;
   return `-----BEGIN CERTIFICATE-----\n${linhas}\n-----END CERTIFICATE-----`;
 }
 
-async function fingerprintSha256(b64Der: string): Promise<string> {
-  const der = Uint8Array.from(atob(b64Der), (c) => c.charCodeAt(0));
-  const hash = await crypto.subtle.digest('SHA-256', der);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, '0')).join(':');
+// Normaliza base64 (remove espaços/quebras) para comparação byte-a-byte do DER.
+function normB64(s: string): string {
+  return s.replace(/\s+/g, '');
 }
 
 export interface NotificacaoApple {
@@ -171,13 +173,15 @@ export interface NotificacaoApple {
 export async function verificarNotificacao(
   env: AppleEnv, signedPayload: string,
 ): Promise<NotificacaoApple> {
+  if (!APPLE_ROOT_CA_G3) throw new Error('APPLE_ROOT_CA_G3 não configurado');
+
   const header = jose.decodeProtectedHeader(signedPayload);
   const x5c = header.x5c as string[] | undefined;
   if (!x5c || x5c.length < 2) throw new Error('Notificação Apple sem cadeia x5c');
 
-  // 1. Pino do root: o último cert da cadeia deve ser o Apple Root CA - G3.
-  const rootFp = await fingerprintSha256(x5c[x5c.length - 1]);
-  if (rootFp.toLowerCase() !== APPLE_ROOT_CA_G3_SHA256.toLowerCase()) {
+  // 1. Pino do root: o último cert da cadeia tem de ser exatamente o
+  //    Apple Root CA - G3 que configuramos.
+  if (normB64(x5c[x5c.length - 1]) !== normB64(APPLE_ROOT_CA_G3)) {
     throw new Error('Notificação Apple: root CA não confiável');
   }
 
