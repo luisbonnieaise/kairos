@@ -32,9 +32,12 @@ workflows:
       - name: Configurar assinatura (certificado dedicado de CI + profile)
         script: |
           keychain initialize
+          # A chave privada chega em base64 (variavel CERTIFICATE_PRIVATE_KEY_B64)
+          # para evitar problemas com quebras de linha; decodifica para um .pem.
+          echo "$CERTIFICATE_PRIVATE_KEY_B64" | base64 --decode > /tmp/ci_cert_key.pem
           app-store-connect fetch-signing-files "com.thekairo.app" \
             --type IOS_APP_STORE \
-            --certificate-key="@env:CERTIFICATE_PRIVATE_KEY" \
+            --certificate-key="@file:/tmp/ci_cert_key.pem" \
             --create
           keychain add-certificates
           xcode-project use-profiles
