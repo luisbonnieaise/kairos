@@ -1,8 +1,10 @@
 // Supabase Edge Function — Stripe Webhook
-// Recebe eventos da Stripe, verifica assinatura, deduplica via stripe_events
-// e mantém public.subscriptions canônica RE-BUSCANDO o estado real na Stripe
-// (tolerante a fora-de-ordem). Deploy OBRIGATÓRIO com --no-verify-jwt: a
-// Stripe não envia JWT do Supabase; a segurança é a assinatura do payload.
+// Recebe eventos da Stripe, verifica assinatura, deduplica via billing_events
+// (provider='stripe') e mantém public.subscriptions canônica RE-BUSCANDO o
+// estado real na Stripe (tolerante a fora-de-ordem) e gravando via a RPC
+// canônica aplicar_estado_assinatura (mesma porta dos webhooks Apple/Google).
+// Deploy OBRIGATÓRIO com --no-verify-jwt: a Stripe não envia JWT do Supabase;
+// a segurança é a assinatura do payload.
 //
 // Princípios (ver docs/00-visao-arquitetura.md §5 e docs/03-stripe-billing.md):
 //   • Idempotência: SELECT em stripe_events antes; se já visto, 200 sem
@@ -34,18 +36,19 @@ function resp(body: string, status = 200): Response {
   return new Response(body, { status, headers: minimalHeaders });
 }
 
-// Marca o evento como visto. Falha silenciosa: na pior das hipóteses a
-// Stripe re-entrega e o UPSERT idempotente em subscriptions absorve.
+// Marca o evento como visto no ledger unificado billing_events
+// (provider='stripe'). Falha silenciosa: na pior das hipóteses a Stripe
+// re-entrega e o UPSERT idempotente da RPC absorve.
 async function marcarVisto(
   supabaseService: ReturnType<typeof createClient>,
   eventId: string,
   type: string,
 ): Promise<void> {
   const { error } = await supabaseService
-    .from('stripe_events')
-    .insert({ id: eventId, type });
+    .from('billing_events')
+    .insert({ provider: 'stripe', event_id: eventId, type });
   if (error && (error as { code?: string }).code !== '23505') {
-    console.error('Falha ao gravar stripe_events:', error.message);
+    console.error('Falha ao gravar billing_events:', error.message);
   }
 }
 
@@ -103,9 +106,10 @@ Deno.serve(async (req: Request) => {
     // Race entre dois workers paralelos no mesmo event.id: o UPSERT
     // idempotente em subscriptions absorve sem dano (re-fetch idêntico).
     const { data: jaVisto } = await supabaseService
-      .from('stripe_events')
-      .select('id')
-      .eq('id', event.id)
+      .from('billing_events')
+      .select('event_id')
+      .eq('provider', 'stripe')
+      .eq('event_id', event.id)
       .maybeSingle();
     if (jaVisto) {
       console.log('Evento já processado (idempotente):', event.id, event.type);
@@ -218,37 +222,55 @@ Deno.serve(async (req: Request) => {
       return resp('"erro_interno"', 500);
     }
 
-    // ── 7. UPSERT atômico em subscriptions ─────────────────────────────────
-    // Sem sub (ex.: payment_failed sem subscription resolvível): apenas
-    // atualiza updated_at sem mexer em status — preserva o estado anterior.
-    const linha: Record<string, unknown> = {
-      user_id: supabaseUserId,
-      stripe_customer_id: customerId,
-      updated_at: new Date().toISOString(),
-    };
-
+    // ── 7. Escrita canônica via RPC aplicar_estado_assinatura ──────────────
+    // A RPC é a ÚNICA porta de escrita do entitlement (mesma usada por
+    // apple/google/verify-purchase), com a regra de convergência multiplataforma.
+    // Com sub: aplica o estado real (provider='stripe'). Sem sub (ex.:
+    // payment_failed sem subscription resolvível): NÃO toca status — apenas
+    // garante o stripe_customer_id pra resolução futura.
     if (sub) {
-      const priceId =
-        sub.items?.data?.[0]?.price?.id ?? null;
+      const priceId  = sub.items?.data?.[0]?.price?.id ?? null;
       const periodEnd =
         sub.current_period_end != null
           ? new Date(sub.current_period_end * 1000).toISOString()
           : null;
 
-      linha['stripe_subscription_id'] = sub.id;
-      linha['status']                 = sub.status;
-      linha['price_id']               = priceId;
-      linha['current_period_end']     = periodEnd;
-      linha['cancel_at_period_end']   = !!sub.cancel_at_period_end;
+      const { error: rpcErr } = await supabaseService.rpc(
+        'aplicar_estado_assinatura',
+        {
+          p_user_id:              supabaseUserId,
+          p_provider:             'stripe',
+          p_status:               sub.status,
+          p_product_id:           priceId,
+          p_current_period_end:   periodEnd,
+          p_cancel_at_period_end: !!sub.cancel_at_period_end,
+          p_provider_sub_id:      sub.id,
+        },
+      );
+      if (rpcErr) {
+        console.error('RPC aplicar_estado_assinatura falhou:', rpcErr.message);
+        // Não marca visto → próxima retry reprocessa (RPC é idempotente).
+        return resp('"erro_interno"', 500);
+      }
     }
 
-    const { error: upErr } = await supabaseService
+    // stripe_customer_id é auxiliar (Stripe-only) p/ resolver customer→user
+    // no passo 5 de eventos futuros. Persistido fora da RPC genérica via
+    // upsert parcial: no conflito atualiza só o customer (preserva o status
+    // escrito pela RPC); sem linha (ex.: payment_failed como 1º evento), cria
+    // uma linha mínima (status default 'none').
+    const { error: custErr } = await supabaseService
       .from('subscriptions')
-      .upsert(linha, { onConflict: 'user_id' });
-
-    if (upErr) {
-      console.error('UPSERT subscriptions falhou:', upErr.message);
-      // Não marca visto → próxima retry reprocessa (UPSERT é idempotente).
+      .upsert(
+        {
+          user_id: supabaseUserId,
+          stripe_customer_id: customerId,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' },
+      );
+    if (custErr) {
+      console.error('Upsert stripe_customer_id falhou:', custErr.message);
       return resp('"erro_interno"', 500);
     }
 

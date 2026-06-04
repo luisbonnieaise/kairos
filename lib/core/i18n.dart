@@ -251,7 +251,7 @@ class T {
   static String get salvar => _g('Salvar', 'Save', 'Guardar', 'Speichern');
   static String get salvando => _g('Salvando...', 'Saving...', 'Guardando...', 'Speichern...');
 
-  // ── KAIRO PREMIUM (Fase 03 — Stripe) ───────────────────────────────────────
+  // ── KAIRO PREMIUM (IAP — StoreKit / Play Billing) ──────────────────────────
   static String get premiumTitulo => _g(
     'Kairo Premium',
     'Kairo Premium',
@@ -306,29 +306,41 @@ class T {
     'Activo hasta',
     'Aktiv bis',
   );
-  static String get premiumRetornoSucesso => _g(
-    'Assinatura confirmada. Bem-vindo ao Premium.',
-    'Subscription confirmed. Welcome to Premium.',
-    'Suscripción confirmada. Bienvenido a Premium.',
-    'Abo bestätigt. Willkommen bei Premium.',
+  static String get premiumCompraSucesso => _g(
+    'Assinatura ativada. Bem-vindo ao Premium.',
+    'Subscription activated. Welcome to Premium.',
+    'Suscripción activada. Bienvenido a Premium.',
+    'Abo aktiviert. Willkommen bei Premium.',
   );
-  static String get premiumRetornoCancelado => _g(
-    'Você cancelou. Pode voltar a assinar quando quiser.',
-    'You canceled. You can subscribe again anytime.',
-    'Cancelaste. Puedes volver a suscribirte cuando quieras.',
-    'Du hast abgebrochen. Du kannst jederzeit erneut abonnieren.',
+  static String get premiumCompraCancelada => _g(
+    'Compra cancelada. Você pode assinar quando quiser.',
+    'Purchase canceled. You can subscribe anytime.',
+    'Compra cancelada. Puedes suscribirte cuando quieras.',
+    'Kauf abgebrochen. Du kannst jederzeit abonnieren.',
   );
-  static String get premiumGerenciarStripe => _g(
-    'Gerenciar/cancelar pelo recibo da Stripe enviado por e-mail.',
-    'Manage/cancel via the Stripe receipt sent by email.',
-    'Gestiona/cancela desde el recibo de Stripe enviado por correo.',
-    'Verwalten/kündigen über die per E-Mail gesendete Stripe-Quittung.',
+  static String get premiumRestaurar => _g(
+    'Restaurar compras',
+    'Restore purchases',
+    'Restaurar compras',
+    'Käufe wiederherstellen',
+  );
+  static String get premiumRestaurado => _g(
+    'Compras restauradas.',
+    'Purchases restored.',
+    'Compras restauradas.',
+    'Käufe wiederhergestellt.',
+  );
+  static String get premiumSemProdutos => _g(
+    'Não foi possível carregar os planos agora. Tente novamente em instantes.',
+    'Could not load the plans right now. Please try again shortly.',
+    'No se pudieron cargar los planes ahora. Inténtalo de nuevo en unos instantes.',
+    'Die Pläne konnten gerade nicht geladen werden. Bitte versuche es gleich erneut.',
   );
   static String get assinaturaErro => _g(
-    'Não foi possível abrir o pagamento. Tente novamente.',
-    'Could not open payment. Try again.',
-    'No se pudo abrir el pago. Inténtalo de nuevo.',
-    'Zahlung konnte nicht geöffnet werden. Versuche es erneut.',
+    'Não foi possível concluir a compra. Tente novamente.',
+    'Could not complete the purchase. Try again.',
+    'No se pudo completar la compra. Inténtalo de nuevo.',
+    'Kauf konnte nicht abgeschlossen werden. Versuche es erneut.',
   );
 
   // ── PÁTIO (INÍCIO) ─────────────────────────────────────────────────────────

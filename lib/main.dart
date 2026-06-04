@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/kairo_tema.dart';
 import 'core/audio.dart';
 import 'core/banco.dart';
+import 'core/billing.dart';
 import 'core/notificacoes.dart';
 import 'core/i18n.dart';
 import 'telas/auth.dart';
@@ -24,6 +25,10 @@ void main() async {
     url: dotenv.env['SUPABASE_URL']!,
     anonKey: dotenv.env['SUPABASE_KEY']!,
   );
+
+  // Inicia o listener de compras IAP (purchaseStream) o quanto antes — compras
+  // pendentes/retomadas são entregues no boot.
+  Billing.instance.init();
 
   // Carrega o idioma salvo localmente (ou padrão pt)
   await T.carregarLocal();
@@ -53,9 +58,9 @@ final cartaNovaNotifier = ValueNotifier<bool>(false);
 // Notifica a navbar quando há uma pergunta do Jardim não respondida
 final jardimNovaNotifier = ValueNotifier<bool>(false);
 
-// Notifica o último deep link recebido (kairo://...). O paywall (TelaPremium)
-// escuta para detectar retorno do Stripe Checkout. Mais consumidores podem
-// ouvir no futuro — o notifier guarda o último URI, sem fila.
+// Notifica o último deep link recebido (kairo://...). Guarda o último URI, sem
+// fila. (O paywall agora é IAP nativo e não depende de deep link; a infra fica
+// disponível para outros usos futuros.)
 final ValueNotifier<Uri?> deepLinkNotifier = ValueNotifier<Uri?>(null);
 
 class KairoApp extends StatefulWidget {
