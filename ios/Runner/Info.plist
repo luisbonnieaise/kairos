@@ -49,6 +49,11 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- image_picker: foto de perfil (avatar) — exigidas pela Apple, app crasha sem elas -->
+	<key>NSCameraUsageDescription</key>
+	<string>O Kairo usa a câmera para você tirar uma foto de perfil.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>O Kairo acessa suas fotos para você escolher uma imagem de perfil.</string>
 	<!-- Deep link kairo:// (retorno do Stripe Checkout — Fase 03) -->
 	<key>CFBundleURLTypes</key>
 	<array>
