@@ -1,4 +1,4 @@
-package com.example.kairo
+package com.kairo.app
 
 import io.flutter.embedding.android.FlutterActivity
 
