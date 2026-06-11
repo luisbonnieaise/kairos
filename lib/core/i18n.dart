@@ -265,10 +265,10 @@ class T {
     'Ein tieferer Mentor, garantierter Wochenbrief, erweiterte Grenzen.',
   );
   static String get premiumBeneficioMentor => _g(
-    'Mentor com o modelo mais sábio (Claude Sonnet).',
-    'Mentor with the wisest model (Claude Sonnet).',
-    'Mentor con el modelo más sabio (Claude Sonnet).',
-    'Mentor mit dem weisesten Modell (Claude Sonnet).',
+    'Mentor em sua forma mais profunda e sábia.',
+    'The Mentor at its deepest and wisest.',
+    'El Mentor en su forma más profunda y sabia.',
+    'Der Mentor in seiner tiefsten und weisesten Form.',
   );
   static String get premiumBeneficioCarta => _g(
     'Carta semanal garantida, mesmo em semanas cheias.',
@@ -329,6 +329,12 @@ class T {
     'Purchases restored.',
     'Compras restauradas.',
     'Käufe wiederhergestellt.',
+  );
+  static String get premiumNadaRestaurar => _g(
+    'Nenhuma assinatura encontrada para restaurar nesta conta.',
+    'No subscription found to restore on this account.',
+    'No se encontró ninguna suscripción para restaurar en esta cuenta.',
+    'Kein Abo zum Wiederherstellen auf diesem Konto gefunden.',
   );
   static String get premiumSemProdutos => _g(
     'Não foi possível carregar os planos agora. Tente novamente em instantes.',

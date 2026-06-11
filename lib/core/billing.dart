@@ -5,7 +5,10 @@ import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 import '../main.dart';
 
 /// Eventos de compra observáveis pela UI (TelaPremium escuta [Billing.eventos]).
-enum BillingEvento { processando, sucesso, restaurado, cancelada, erro }
+/// `nadaParaRestaurar`: restauração concluída sem nenhuma compra anterior —
+/// caso comum em conta nova; sem ele a UI ficaria muda (exigência de UX e de
+/// review da Apple: "Restore" precisa dar feedback sempre).
+enum BillingEvento { processando, sucesso, restaurado, cancelada, erro, nadaParaRestaurar }
 
 /// Camada de billing do client (In-App Purchase). A verdade da assinatura vive
 /// em `public.subscriptions` (escrita só por service role via webhooks /
@@ -42,8 +45,21 @@ class Billing {
   DateTime? _periodoFim;
   String? _statusBruto;
 
+  // Estado da restauração em andamento (ver [restaurar]).
+  bool _restaurando = false;
+  bool _streamAtivoNaRestauracao = false;
+
   /// Estado da última operação de compra, para a UI reagir (snackbar/aviso).
   final ValueNotifier<BillingEvento?> eventos = ValueNotifier<BillingEvento?>(null);
+
+  /// Emite um evento garantindo a notificação mesmo quando repetido:
+  /// ValueNotifier não notifica valor igual ao anterior, então dois "erro"
+  /// seguidos deixariam a UI muda. O null intermediário é ignorado pelos
+  /// listeners (todos fazem early-return em null).
+  void _emitir(BillingEvento e) {
+    eventos.value = null;
+    eventos.value = e;
+  }
 
   /// Última leitura conhecida do premium. `null` enquanto não consultado.
   bool? get cachePremium => _cache;
@@ -92,7 +108,7 @@ class Billing {
   Future<void> comprar(ProductDetails p) async {
     final user = supabase.auth.currentUser;
     if (user == null) {
-      eventos.value = BillingEvento.erro;
+      _emitir(BillingEvento.erro);
       return;
     }
     final param = PurchaseParam(productDetails: p, applicationUserName: user.id);
@@ -100,35 +116,59 @@ class Billing {
   }
 
   /// Reassocia compras anteriores (troca de aparelho / reinstalação). Os
-  /// resultados também chegam pelo `purchaseStream` como `restored`.
+  /// resultados chegam pelo `purchaseStream` como `restored` — mas quando NÃO
+  /// há compra anterior o iOS não entrega NADA no stream (o plugin não expõe
+  /// o "restore finished" do StoreKit). Por isso: emitimos `processando` já,
+  /// e se o stream ficar mudo por uma janela curta, `nadaParaRestaurar` — a
+  /// UI nunca fica sem resposta. Um `restored` que chegue depois da janela
+  /// ainda é processado normalmente pelo handler.
   Future<void> restaurar() async {
-    await _iap.restorePurchases();
+    if (_restaurando) return; // ignora toque duplo durante a janela
+    _restaurando = true;
+    _streamAtivoNaRestauracao = false;
+    _emitir(BillingEvento.processando);
+    try {
+      await _iap.restorePurchases();
+    } catch (e) {
+      debugPrint('[Billing] restorePurchases falhou: $e');
+      _restaurando = false;
+      _emitir(BillingEvento.erro);
+      return;
+    }
+    await Future<void>.delayed(const Duration(seconds: 4));
+    _restaurando = false;
+    if (!_streamAtivoNaRestauracao) {
+      _emitir(BillingEvento.nadaParaRestaurar);
+    }
   }
 
   // ── Handler do purchaseStream ──────────────────────────────────────────────
   Future<void> _aoAtualizarCompras(List<PurchaseDetails> compras) async {
+    // Qualquer entrega do stream durante uma restauração cancela o fallback
+    // "nadaParaRestaurar" — o resultado real (restaurado/erro) prevalece.
+    if (compras.isNotEmpty) _streamAtivoNaRestauracao = true;
     for (final c in compras) {
       switch (c.status) {
         case PurchaseStatus.pending:
-          eventos.value = BillingEvento.processando;
+          _emitir(BillingEvento.processando);
           break;
         case PurchaseStatus.error:
-          eventos.value = BillingEvento.erro;
+          _emitir(BillingEvento.erro);
           if (c.pendingCompletePurchase) await _iap.completePurchase(c);
           break;
         case PurchaseStatus.canceled:
-          eventos.value = BillingEvento.cancelada;
+          _emitir(BillingEvento.cancelada);
           if (c.pendingCompletePurchase) await _iap.completePurchase(c);
           break;
         case PurchaseStatus.purchased:
         case PurchaseStatus.restored:
           final ok = await _verificarNoServidor(c);
           if (c.pendingCompletePurchase) await _iap.completePurchase(c);
-          eventos.value = ok
+          _emitir(ok
               ? (c.status == PurchaseStatus.restored
                   ? BillingEvento.restaurado
                   : BillingEvento.sucesso)
-              : BillingEvento.erro;
+              : BillingEvento.erro);
           break;
       }
     }

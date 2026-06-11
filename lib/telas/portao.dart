@@ -7,11 +7,10 @@ import '../core/i18n.dart';
 import '../main.dart';
 import 'home.dart';
 
-// URLs legais exigidas pela Apple/Google no paywall. SUBSTITUIR pelas URLs
-// reais quando publicadas (ex.: páginas da landing lp-kairo).
-// TODO(produto): confirmar/atualizar estes endereços.
-const String kUrlTermos = 'https://kairo.app/termos';
-const String kUrlPrivacidade = 'https://kairo.app/privacidade';
+// URLs legais exigidas pela Apple/Google no paywall — páginas reais da
+// landing (lp-kairo), publicadas em /termos e /privacidade.
+const String kUrlTermos = 'https://thekairo.app/termos';
+const String kUrlPrivacidade = 'https://thekairo.app/privacidade';
 
 /// Portão de assinatura (hard paywall). Fica ENTRE o login e o app: sem
 /// entitlement (`active`/`trialing`), o usuário não entra. Substitui as antigas
@@ -32,6 +31,7 @@ class _TelaPortaoState extends State<TelaPortao> {
   bool _processando = false;
   List<ProductDetails> _produtos = const [];
   String? _erro;
+  String? _aviso;
 
   @override
   void initState() {
@@ -83,6 +83,7 @@ class _TelaPortaoState extends State<TelaPortao> {
         setState(() {
           _processando = true;
           _erro = null;
+          _aviso = null;
         });
         break;
       case BillingEvento.sucesso:
@@ -94,6 +95,14 @@ class _TelaPortaoState extends State<TelaPortao> {
       case BillingEvento.cancelada:
         setState(() => _processando = false);
         break;
+      case BillingEvento.nadaParaRestaurar:
+        // Restauração terminou sem compra anterior: informa em tom neutro
+        // (não é erro — é o esperado para conta nova).
+        setState(() {
+          _processando = false;
+          _aviso = T.premiumNadaRestaurar;
+        });
+        break;
       case BillingEvento.erro:
         setState(() {
           _processando = false;
@@ -104,12 +113,18 @@ class _TelaPortaoState extends State<TelaPortao> {
   }
 
   Future<void> _assinar(ProductDetails p) async {
-    setState(() => _erro = null);
+    setState(() {
+      _erro = null;
+      _aviso = null;
+    });
     await Billing.instance.comprar(p);
   }
 
   Future<void> _restaurar() async {
-    setState(() => _erro = null);
+    setState(() {
+      _erro = null;
+      _aviso = null;
+    });
     await Billing.instance.restaurar();
   }
 
@@ -199,6 +214,10 @@ class _TelaPortaoState extends State<TelaPortao> {
                                   ),
                                 ),
 
+                              if (_aviso != null) ...[
+                                const SizedBox(height: 16),
+                                Text(_aviso!, style: KT.caption(cor: KC.cinza)),
+                              ],
                               if (_erro != null) ...[
                                 const SizedBox(height: 16),
                                 Text(_erro!, style: KT.caption(cor: KC.aka)),

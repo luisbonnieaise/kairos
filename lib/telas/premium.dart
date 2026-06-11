@@ -87,6 +87,14 @@ class _TelaPremiumState extends State<TelaPremium> {
           _erro = null;
         });
         break;
+      case BillingEvento.nadaParaRestaurar:
+        // Restauração sem compra anterior: aviso neutro, não erro.
+        setState(() {
+          _processando = false;
+          _aviso = T.premiumNadaRestaurar;
+          _erro = null;
+        });
+        break;
       case BillingEvento.erro:
         setState(() {
           _processando = false;
