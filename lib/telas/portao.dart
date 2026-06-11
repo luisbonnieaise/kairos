@@ -198,9 +198,28 @@ class _TelaPortaoState extends State<TelaPortao> {
 
                               const SizedBox(height: 36),
 
-                              if (_produtos.isEmpty)
-                                Text(T.premiumSemProdutos, style: KT.caption(cor: KC.fumo))
-                              else
+                              if (_produtos.isEmpty) ...[
+                                Text(T.premiumSemProdutos, style: KT.caption(cor: KC.fumo)),
+                                const SizedBox(height: 12),
+                                // Sem retry o usuário ficaria preso numa tela
+                                // morta (a consulta à loja só rodava no boot).
+                                TextButton(
+                                  onPressed: _processando
+                                      ? null
+                                      : () {
+                                          setState(() => _checando = true);
+                                          _verificarEntrar();
+                                        },
+                                  style: TextButton.styleFrom(
+                                    padding: EdgeInsets.zero,
+                                    alignment: Alignment.centerLeft,
+                                  ),
+                                  child: Text(
+                                    T.premiumTentarNovamente,
+                                    style: KT.caption(cor: KC.kin),
+                                  ),
+                                ),
+                              ] else
                                 ..._produtos.map(
                                   (p) => Padding(
                                     padding: const EdgeInsets.only(bottom: 12),

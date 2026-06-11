@@ -342,6 +342,12 @@ class T {
     'No se pudieron cargar los planes ahora. Inténtalo de nuevo en unos instantes.',
     'Die Pläne konnten gerade nicht geladen werden. Bitte versuche es gleich erneut.',
   );
+  static String get premiumTentarNovamente => _g(
+    'Tentar novamente',
+    'Try again',
+    'Intentar de nuevo',
+    'Erneut versuchen',
+  );
   static String get assinaturaErro => _g(
     'Não foi possível concluir a compra. Tente novamente.',
     'Could not complete the purchase. Try again.',

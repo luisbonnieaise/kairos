@@ -91,10 +91,19 @@ class Billing {
   /// Lista os produtos de assinatura ofertados, ordenados por preço crescente
   /// (mensal antes de anual). Vazio se a loja estiver indisponível.
   Future<List<ProductDetails>> produtos() async {
-    if (!await _iap.isAvailable()) return const [];
+    if (!await _iap.isAvailable()) {
+      debugPrint('[Billing] loja indisponível (sem conta da loja no aparelho?)');
+      return const [];
+    }
     final resp = await _iap.queryProductDetails(_ids);
     if (resp.error != null) {
       debugPrint('[Billing] queryProductDetails: ${resp.error}');
+    }
+    if (resp.notFoundIDs.isNotEmpty) {
+      // A loja respondeu mas não reconheceu estes IDs. No iOS as causas
+      // típicas são: Paid Apps Agreement inativo, produto sem metadata
+      // completa ("Ready to Submit"), ou produto recém-criado (propagação).
+      debugPrint('[Billing] produtos NÃO encontrados na loja: ${resp.notFoundIDs}');
     }
     final lista = resp.productDetails.toList()
       ..sort((a, b) => a.rawPrice.compareTo(b.rawPrice));

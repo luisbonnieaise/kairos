@@ -183,9 +183,26 @@ class _TelaPremiumState extends State<TelaPremium> {
                       // Oferta de planos (oculta quando já premium)
                       if (!_carregando && !premium) ...[
                         const SizedBox(height: 40),
-                        if (_produtos.isEmpty)
-                          Text(T.premiumSemProdutos, style: KT.caption(cor: KC.fumo))
-                        else
+                        if (_produtos.isEmpty) ...[
+                          Text(T.premiumSemProdutos, style: KT.caption(cor: KC.fumo)),
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: _processando
+                                ? null
+                                : () {
+                                    setState(() => _carregando = true);
+                                    _carregar();
+                                  },
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              alignment: Alignment.centerLeft,
+                            ),
+                            child: Text(
+                              T.premiumTentarNovamente,
+                              style: KT.caption(cor: KC.kin),
+                            ),
+                          ),
+                        ] else
                           ..._produtos.map(
                             (p) => Padding(
                               padding: const EdgeInsets.only(bottom: 12),
