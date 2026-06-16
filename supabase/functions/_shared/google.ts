@@ -1,69 +1,47 @@
-// Helpers Google Play Billing (compartilhados por google-webhook e
-// verify-purchase).
-//   • verificarPushOidc() — valida o token OIDC do push do Pub/Sub (assinatura
-//                           Google + audience == GOOGLE_PUBSUB_AUDIENCE).
-//   • estadoCanonicoGoogle() — re-busca o estado real via Play Developer API
-//                              (purchases.subscriptionsv2.get) e mapeia p/ o
-//                              vocabulário canônico de public.subscriptions.
-//   • acknowledgeSeNecessario() — confirma a compra p/ não ser reembolsada
-//                                 automaticamente em ~3 dias.
-//
-// Segredos esperados (🟦 Supabase, ver docs/08-guia-consoles-luis.md §3):
-//   GOOGLE_PACKAGE_NAME, GOOGLE_SERVICE_ACCOUNT_JSON, GOOGLE_PUBSUB_AUDIENCE.
-
+// Integração Google Play (Android Publisher API + Real-time Developer
+// Notifications via Pub/Sub). Reaproveitado por google-webhook e verify-purchase.
+// Como na Apple: o entitlement vem do RE-FETCH no servidor do Google.
 import * as jose from 'https://esm.sh/jose@5.9.6';
+import type { CanonicalStatus } from './billing.ts';
 
-const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const ANDROID_PUBLISHER = 'https://androidpublisher.googleapis.com/androidpublisher/v3';
-const SCOPE = 'https://www.googleapis.com/auth/androidpublisher';
-
-// JWKS de verificação dos tokens OIDC emitidos pelo Pub/Sub (chaves Google).
-const GOOGLE_JWKS = jose.createRemoteJWKSet(
-  new URL('https://www.googleapis.com/oauth2/v3/certs'),
-);
-
-// Valida o token OIDC do push do Pub/Sub. O header chega como
-// "Authorization: Bearer <jwt>"; exigimos assinatura Google + audience exata.
-export async function verificarPushOidc(authHeader: string | null): Promise<void> {
-  const audience = Deno.env.get('GOOGLE_PUBSUB_AUDIENCE');
-  if (!audience) throw new Error('GOOGLE_PUBSUB_AUDIENCE ausente');
-  if (!authHeader?.startsWith('Bearer ')) throw new Error('push sem Bearer token');
-  const token = authHeader.slice('Bearer '.length).trim();
-  await jose.jwtVerify(token, GOOGLE_JWKS, {
-    audience,
-    issuer: ['https://accounts.google.com', 'accounts.google.com'],
-  });
-}
-
-type ServiceAccount = {
+interface ServiceAccount {
   client_email: string;
   private_key: string;
-  private_key_id?: string;
-};
-
-function lerServiceAccount(): ServiceAccount {
-  const raw = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON');
-  if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON ausente');
-  const sa = JSON.parse(raw) as ServiceAccount;
-  if (!sa.client_email || !sa.private_key) throw new Error('service account inválida');
-  return sa;
 }
 
-// Troca um JWT assinado pela service account por um access token OAuth2 com
-// escopo androidpublisher.
-async function accessToken(): Promise<string> {
-  const sa = lerServiceAccount();
-  const pk = await jose.importPKCS8(sa.private_key, 'RS256');
-  const assertion = await new jose.SignJWT({ scope: SCOPE })
-    .setProtectedHeader({ alg: 'RS256', typ: 'JWT', kid: sa.private_key_id })
+export interface GoogleEnv {
+  serviceAccount: ServiceAccount;
+  packageName: string; // com.thekairo.app
+}
+
+export function lerGoogleEnv(): GoogleEnv {
+  const raw = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON');
+  const packageName = Deno.env.get('GOOGLE_PACKAGE_NAME');
+  if (!raw || !packageName) {
+    throw new Error('Config Google ausente: GOOGLE_SERVICE_ACCOUNT_JSON/GOOGLE_PACKAGE_NAME');
+  }
+  const sa = JSON.parse(raw) as ServiceAccount;
+  if (!sa.client_email || !sa.private_key) {
+    throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON inválido');
+  }
+  return { serviceAccount: sa, packageName };
+}
+
+// OAuth2 server-to-server via JWT do service account (RS256).
+async function accessToken(sa: ServiceAccount): Promise<string> {
+  const key = await jose.importPKCS8(sa.private_key, 'RS256');
+  const assertion = await new jose.SignJWT({
+    scope: 'https://www.googleapis.com/auth/androidpublisher',
+  })
+    .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
     .setIssuer(sa.client_email)
     .setSubject(sa.client_email)
-    .setAudience(GOOGLE_TOKEN_URL)
+    .setAudience('https://oauth2.googleapis.com/token')
     .setIssuedAt()
     .setExpirationTime('1h')
-    .sign(pk);
+    .sign(key);
 
-  const r = await fetch(GOOGLE_TOKEN_URL, {
+  const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -71,106 +49,99 @@ async function accessToken(): Promise<string> {
       assertion,
     }),
   });
-  if (!r.ok) throw new Error(`OAuth2 token ${r.status}`);
-  const j = await r.json() as { access_token?: string };
-  if (!j.access_token) throw new Error('OAuth2 sem access_token');
+  if (!res.ok) throw new Error(`OAuth Google ${res.status}`);
+  const j = await res.json() as { access_token?: string };
+  if (!j.access_token) throw new Error('OAuth Google sem access_token');
   return j.access_token;
 }
 
-export type EstadoCanonicoGoogle = {
-  status: string;                      // active|past_due|canceled|expired|grace
+// subscriptionState (subscriptionsv2) -> status canônico.
+export function mapGoogleStatus(state: string): CanonicalStatus {
+  switch (state) {
+    case 'SUBSCRIPTION_STATE_ACTIVE':         return 'active';
+    case 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD': return 'grace';
+    case 'SUBSCRIPTION_STATE_ON_HOLD':        return 'past_due';
+    case 'SUBSCRIPTION_STATE_PAUSED':         return 'paused';
+    case 'SUBSCRIPTION_STATE_CANCELED':       return 'active'; // acesso até expiry
+    case 'SUBSCRIPTION_STATE_EXPIRED':        return 'expired';
+    default:                                  return 'none';   // PENDING/desconhecido
+  }
+}
+
+export interface EstadoGoogle {
+  userId: string | null; // obfuscatedExternalAccountId
+  status: CanonicalStatus;
   productId: string | null;
-  currentPeriodEnd: string | null;     // ISO
+  currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
-  obfuscatedAccountId: string | null;  // = supabase user_id
-  acknowledged: boolean;
-  productIdParaAck: string | null;     // subscriptionId p/ acknowledge (v3)
-};
+  purchaseToken: string;
+}
 
-type SubscriptionV2 = {
-  subscriptionState?: string;
-  acknowledgementState?: string;
+interface SubscriptionV2 {
+  subscriptionState: string;
   externalAccountIdentifiers?: { obfuscatedExternalAccountId?: string };
-  lineItems?: Array<{
-    productId?: string;
-    expiryTime?: string;
-    autoRenewingPlan?: { autoRenewEnabled?: boolean };
-  }>;
-};
+  acknowledgementState?: string;
+  lineItems?: Array<{ productId?: string; expiryTime?: string }>;
+}
 
-// Re-busca o estado canônico de uma assinatura pelo purchaseToken.
-export async function estadoCanonicoGoogle(purchaseToken: string): Promise<EstadoCanonicoGoogle | null> {
-  const pkg = Deno.env.get('GOOGLE_PACKAGE_NAME');
-  if (!pkg) throw new Error('GOOGLE_PACKAGE_NAME ausente');
-  const tok = await accessToken();
+// Re-fetch canônico de uma assinatura pelo purchaseToken. Faz acknowledge se
+// ainda pendente (exigência do Google p/ não estornar automaticamente).
+export async function estadoGoogle(env: GoogleEnv, purchaseToken: string): Promise<EstadoGoogle> {
+  const token = await accessToken(env.serviceAccount);
+  const pkg = env.packageName;
+  const url =
+    `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${pkg}` +
+    `/purchases/subscriptionsv2/tokens/${encodeURIComponent(purchaseToken)}`;
 
-  const url = `${ANDROID_PUBLISHER}/applications/${encodeURIComponent(pkg)}/purchases/subscriptionsv2/tokens/${encodeURIComponent(purchaseToken)}`;
-  const r = await fetch(url, { headers: { Authorization: `Bearer ${tok}` } });
-  if (!r.ok) throw new Error(`subscriptionsv2.get ${r.status}`);
-  const sub = await r.json() as SubscriptionV2;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`subscriptionsv2.get ${res.status}`);
+  const sub = await res.json() as SubscriptionV2;
 
-  const line = sub.lineItems?.[0];
-  const autoRenew = line?.autoRenewingPlan?.autoRenewEnabled !== false;
+  const ultimo = sub.lineItems?.[sub.lineItems.length - 1];
 
-  // Mapeamento subscriptionState -> canônico:
-  //   ACTIVE          -> active (cancel flag conforme autoRenew)
-  //   IN_GRACE_PERIOD -> grace
-  //   ON_HOLD/PAUSED  -> past_due
-  //   CANCELED        -> active + cancel_at_period_end (mantém até expirar)
-  //   EXPIRED         -> expired
-  let status: string;
-  let cancelAtPeriodEnd = false;
-  switch (sub.subscriptionState) {
-    case 'SUBSCRIPTION_STATE_ACTIVE':
-      status = 'active';
-      cancelAtPeriodEnd = !autoRenew;
-      break;
-    case 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD':
-      status = 'grace';
-      break;
-    case 'SUBSCRIPTION_STATE_ON_HOLD':
-    case 'SUBSCRIPTION_STATE_PAUSED':
-      status = 'past_due';
-      break;
-    case 'SUBSCRIPTION_STATE_CANCELED':
-      status = 'active';
-      cancelAtPeriodEnd = true;
-      break;
-    case 'SUBSCRIPTION_STATE_EXPIRED':
-      status = 'expired';
-      break;
-    default:
-      status = 'canceled';
+  // Acknowledge se pendente.
+  if (sub.acknowledgementState === 'ACKNOWLEDGEMENT_STATE_PENDING') {
+    const ack =
+      `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${pkg}` +
+      `/purchases/subscriptions/tokens/${encodeURIComponent(purchaseToken)}:acknowledge`;
+    // productId é exigido pelo endpoint de acknowledge (subscriptions v1).
+    await fetch(ack, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    }).catch((e) => console.error('acknowledge Google falhou:', (e as Error).message));
   }
 
   return {
-    status,
-    productId: line?.productId ?? null,
-    currentPeriodEnd: line?.expiryTime ?? null,
-    cancelAtPeriodEnd,
-    obfuscatedAccountId: sub.externalAccountIdentifiers?.obfuscatedExternalAccountId ?? null,
-    acknowledged: sub.acknowledgementState === 'ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED',
-    productIdParaAck: line?.productId ?? null,
+    userId: sub.externalAccountIdentifiers?.obfuscatedExternalAccountId ?? null,
+    status: mapGoogleStatus(sub.subscriptionState),
+    productId: ultimo?.productId ?? null,
+    currentPeriodEnd: ultimo?.expiryTime ?? null,
+    cancelAtPeriodEnd: sub.subscriptionState === 'SUBSCRIPTION_STATE_CANCELED',
+    purchaseToken,
   };
 }
 
-// Reconhece (acknowledge) uma compra de assinatura ainda pendente, evitando o
-// reembolso automático do Google em ~3 dias. Idempotente: só chama se preciso.
-export async function acknowledgeSeNecessario(
-  purchaseToken: string,
-  subscriptionId: string,
-): Promise<void> {
-  const pkg = Deno.env.get('GOOGLE_PACKAGE_NAME');
-  if (!pkg) throw new Error('GOOGLE_PACKAGE_NAME ausente');
-  const tok = await accessToken();
-  const url = `${ANDROID_PUBLISHER}/applications/${encodeURIComponent(pkg)}/purchases/subscriptions/${encodeURIComponent(subscriptionId)}/tokens/${encodeURIComponent(purchaseToken)}:acknowledge`;
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
-    body: '{}',
-  });
-  // 200 = ok; já reconhecida pode vir 400 com motivo — não é erro fatal.
-  if (!r.ok && r.status !== 400) {
-    throw new Error(`acknowledge ${r.status}`);
-  }
+// ── RTDN (Real-time Developer Notification via Pub/Sub push) ─────────────────
+export interface NotificacaoGoogle {
+  messageId: string;
+  notificationType: number;
+  purchaseToken: string;
+}
+
+// Decodifica o envelope Pub/Sub push. A mensagem real vem base64 em
+// message.data (DeveloperNotification). Devolve null para mensagens que não
+// são de assinatura (test/voided/oneTimeProduct).
+export function decodificarRtdn(body: unknown): NotificacaoGoogle | null {
+  const env = body as { message?: { data?: string; messageId?: string } };
+  const data = env.message?.data;
+  const messageId = env.message?.messageId;
+  if (!data || !messageId) return null;
+
+  const json = JSON.parse(atob(data)) as {
+    subscriptionNotification?: { notificationType: number; purchaseToken: string };
+  };
+  const sn = json.subscriptionNotification;
+  if (!sn) return null;
+  return { messageId, notificationType: sn.notificationType, purchaseToken: sn.purchaseToken };
 }

@@ -67,6 +67,7 @@ class _TelaHomeState extends State<TelaHome> {
 
   void _selecionar(int i) {
     if (i == _aba) return;
+    HapticFeedback.selectionClick();
     setState(() => _aba = i);
     _mostrarTutorialAba(i);
   }
@@ -167,7 +168,7 @@ class _NavBar extends StatelessWidget {
   }
 }
 
-class _ItemNav extends StatelessWidget {
+class _ItemNav extends StatefulWidget {
   final IconData icone;
   final String label;
   final int index;
@@ -185,48 +186,105 @@ class _ItemNav extends StatelessWidget {
   });
 
   @override
+  State<_ItemNav> createState() => _ItemNavState();
+}
+
+class _ItemNavState extends State<_ItemNav> with SingleTickerProviderStateMixin {
+  // "Pop": saltinho elástico do ícone quando a aba passa a estar selecionada.
+  late final AnimationController _pop;
+  late final Animation<double> _popEscala;
+
+  // Afundar ao pressionar — feedback tátil de toque, separado do pop.
+  bool _pressionado = false;
+
+  bool get _ativo => widget.index == widget.selecionado;
+
+  @override
+  void initState() {
+    super.initState();
+    _pop = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    );
+    // 1.0 → 1.28 → 1.0 com overshoot suave (saltinho que assenta).
+    _popEscala = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.28), weight: 40),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.28, end: 1.0)
+            .chain(CurveTween(curve: Curves.elasticOut)),
+        weight: 60,
+      ),
+    ]).animate(_pop);
+  }
+
+  @override
+  void didUpdateWidget(_ItemNav old) {
+    super.didUpdateWidget(old);
+    // Dispara o pop só na transição para "ativo" (não a cada rebuild).
+    final eraAtivo = old.index == old.selecionado;
+    if (_ativo && !eraAtivo) _pop.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _pop.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final ativo = index == selecionado;
-    final cor = ativo ? KC.acento : KC.textoSuave.withValues(alpha: 0.7);
+    final cor = _ativo ? KC.acento : KC.textoSuave.withValues(alpha: 0.7);
     return Expanded(
       child: GestureDetector(
-        onTap: () => aoTocar(index),
+        onTap: () => widget.aoTocar(widget.index),
+        onTapDown: (_) => setState(() => _pressionado = true),
+        onTapUp: (_) => setState(() => _pressionado = false),
+        onTapCancel: () => setState(() => _pressionado = false),
         behavior: HitTestBehavior.opaque,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 280),
-                curve: Curves.easeInOutCubic,
-                width: ativo ? 18 : 0,
-                height: 2,
-                color: KC.acento,
-              ),
-              const SizedBox(height: 6),
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Icon(icone, size: 20, color: cor),
-                  if (notificacao)
-                    Positioned(
-                      top: -2,
-                      right: -5,
-                      child: Container(
-                        width: 6,
-                        height: 6,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFE53935),
-                          shape: BoxShape.circle,
+        child: AnimatedScale(
+          // Afundar ao toque; volta com leve overshoot ao soltar.
+          scale: _pressionado ? 0.86 : 1.0,
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOutBack,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 280),
+                  curve: Curves.easeInOutCubic,
+                  width: _ativo ? 18 : 0,
+                  height: 2,
+                  color: KC.acento,
+                ),
+                const SizedBox(height: 6),
+                ScaleTransition(
+                  scale: _popEscala,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Icon(widget.icone, size: 20, color: cor),
+                      if (widget.notificacao)
+                        Positioned(
+                          top: -2,
+                          right: -5,
+                          child: Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFE53935),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(label, style: KT.tabLabel(cor: cor)),
-            ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(widget.label, style: KT.tabLabel(cor: cor)),
+              ],
+            ),
           ),
         ),
       ),

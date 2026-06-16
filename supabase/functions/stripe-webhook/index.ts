@@ -1,25 +1,28 @@
-// Supabase Edge Function — Stripe Webhook (billing multiplataforma)
-// Recebe eventos da Stripe, verifica a assinatura HMAC, deduplica via
-// billing_events (provider='stripe') e converge public.subscriptions
-// RE-BUSCANDO o estado real na Stripe e chamando a RPC canônica
-// aplicar_estado_assinatura(). Deploy OBRIGATÓRIO com --no-verify-jwt: a Stripe
-// não envia JWT do Supabase; a segurança é a assinatura do payload.
+// Supabase Edge Function — Stripe Webhook
+// Recebe eventos da Stripe, verifica assinatura, deduplica via billing_events
+// (provider='stripe') e mantém public.subscriptions canônica RE-BUSCANDO o
+// estado real na Stripe (tolerante a fora-de-ordem) e gravando via a RPC
+// canônica aplicar_estado_assinatura (mesma porta dos webhooks Apple/Google).
+// Deploy OBRIGATÓRIO com --no-verify-jwt: a Stripe não envia JWT do Supabase;
+// a segurança é a assinatura do payload.
 //
-// Princípios (docs/00-visao-arquitetura.md §5 e docs/07-billing-multiplataforma.md §0):
-//   • Idempotência: INSERT em billing_events ON CONFLICT DO NOTHING ANTES de
-//     processar. Se nada foi inserido (evento já visto) → 200 sem reprocessar.
-//   • Canonicidade (anti fora-de-ordem): NÃO confiar nos campos do evento.
-//     Re-buscar a subscription na Stripe e aplicar via RPC (UPSERT atômico).
-//   • Convergência: a RPC impede que a Stripe rebaixe um Premium ativo de
-//     outro provider (e vice-versa). Aqui só passamos o estado canônico Stripe.
+// Princípios (ver docs/00-visao-arquitetura.md §5 e docs/03-stripe-billing.md):
+//   • Idempotência: SELECT em stripe_events antes; se já visto, 200 sem
+//     reprocessar. Gravação acontece SÓ APÓS o UPSERT bem-sucedido — assim,
+//     uma falha de processamento NÃO marca o evento como visto, e a Stripe
+//     reentrega. (Inversão proposital: prefere reprocesso duplo ao silêncio.)
+//   • Canonicidade: NÃO confiar nos campos do evento. Re-buscar a
+//     subscription na Stripe e fazer UPSERT atômico (sem read-modify-write).
+//     UPSERT em si é idempotente — reprocesso duplo é seguro.
 //   • Resposta rápida (<5s): processado/ignorado = 200; assinatura ruim = 400;
-//     falha real = 500 (Stripe re-tenta — a dedupe + re-fetch absorvem).
+//     falha real = 500 (a Stripe re-tenta).
 //   • Nunca devolver detalhe de erro ao chamador.
 //
 // Eventos processados:
 //   checkout.session.completed
 //   customer.subscription.created | updated | deleted
-//   invoice.paid | invoice.payment_failed
+//   invoice.payment_failed
+// Demais: 200 'ok' silencioso (e marcado em stripe_events pra não revisitar).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0';
 import Stripe from 'https://esm.sh/stripe@17.5.0?target=deno';
@@ -33,19 +36,19 @@ function resp(body: string, status = 200): Response {
   return new Response(body, { status, headers: minimalHeaders });
 }
 
-// Mapeia status da Stripe → vocabulário canônico de public.subscriptions.
-// Apenas active/trialing concedem acesso (grace não existe na Stripe).
-function mapearStatus(s: string): string {
-  switch (s) {
-    case 'trialing':           return 'trialing';
-    case 'active':             return 'active';
-    case 'past_due':           return 'past_due';
-    case 'canceled':           return 'canceled';
-    case 'incomplete':         return 'incomplete';
-    case 'incomplete_expired': return 'incomplete';
-    case 'unpaid':             return 'past_due';  // em dunning: não concede
-    case 'paused':             return 'past_due';
-    default:                   return 'canceled';
+// Marca o evento como visto no ledger unificado billing_events
+// (provider='stripe'). Falha silenciosa: na pior das hipóteses a Stripe
+// re-entrega e o UPSERT idempotente da RPC absorve.
+async function marcarVisto(
+  supabaseService: ReturnType<typeof createClient>,
+  eventId: string,
+  type: string,
+): Promise<void> {
+  const { error } = await supabaseService
+    .from('billing_events')
+    .insert({ provider: 'stripe', event_id: eventId, type });
+  if (error && (error as { code?: string }).code !== '23505') {
+    console.error('Falha ao gravar billing_events:', error.message);
   }
 }
 
@@ -64,9 +67,9 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── 1. Ler corpo BRUTO + verificar assinatura ──────────────────────────
-    // req.text() preserva o payload exato pra constructEventAsync conferir o
-    // HMAC. Qualquer parse/serialize quebraria a verificação.
-    const rawBody   = await req.text();
+    // req.text() preserva o payload exato pra constructEventAsync conferir
+    // o HMAC. Qualquer parse/serialize quebraria a verificação.
+    const rawBody  = await req.text();
     const sigHeader = req.headers.get('stripe-signature');
     if (!sigHeader) {
       console.error('Webhook sem header stripe-signature');
@@ -98,23 +101,17 @@ Deno.serve(async (req: Request) => {
       auth: { persistSession: false },
     });
 
-    // ── 2. Idempotência (insert-first): registra o evento ANTES de processar ─
-    // ON CONFLICT DO NOTHING + .select(): se voltou vazio, o evento já foi
-    // processado → 200 sem reprocessar. A canonicidade (re-fetch) + o fato de
-    // a Stripe emitir vários eventos por mudança garantem convergência mesmo
-    // que um processamento isolado falhe após esta marcação.
-    const { data: inserido, error: dedupeErr } = await supabaseService
+    // ── 2. Idempotência (pré-check): evento já visto? ──────────────────────
+    // SELECT por PK é O(1). Se sim, retorna 200 sem reprocessar.
+    // Race entre dois workers paralelos no mesmo event.id: o UPSERT
+    // idempotente em subscriptions absorve sem dano (re-fetch idêntico).
+    const { data: jaVisto } = await supabaseService
       .from('billing_events')
-      .upsert(
-        { provider: 'stripe', event_id: event.id, type: event.type },
-        { onConflict: 'provider,event_id', ignoreDuplicates: true },
-      )
-      .select();
-    if (dedupeErr) {
-      console.error('Falha ao gravar billing_events:', dedupeErr.message);
-      return resp('"erro_interno"', 500);
-    }
-    if (!inserido || inserido.length === 0) {
+      .select('event_id')
+      .eq('provider', 'stripe')
+      .eq('event_id', event.id)
+      .maybeSingle();
+    if (jaVisto) {
       console.log('Evento já processado (idempotente):', event.id, event.type);
       return resp('"ok"', 200);
     }
@@ -125,16 +122,16 @@ Deno.serve(async (req: Request) => {
       'customer.subscription.created',
       'customer.subscription.updated',
       'customer.subscription.deleted',
-      'invoice.paid',
       'invoice.payment_failed',
     ]);
     if (!tiposRelevantes.has(event.type)) {
+      await marcarVisto(supabaseService, event.id, event.type);
       return resp('"ok"', 200);
     }
 
     // ── 4. Resolver customer_id e (se houver) subscription_id do evento ────
-    // NÃO confiamos nos demais campos — só nos dois identificadores. O estado
-    // real vem do re-fetch logo abaixo.
+    // NÃO confiamos nos demais campos — só nos dois identificadores. O
+    // estado real vem do re-fetch logo abaixo.
     let customerId: string | null = null;
     let subscriptionId: string | null = null;
 
@@ -152,7 +149,6 @@ Deno.serve(async (req: Request) => {
         subscriptionId = (obj.id as string | null) ?? null;
         break;
       }
-      case 'invoice.paid':
       case 'invoice.payment_failed': {
         customerId     = (obj.customer as string | null) ?? null;
         subscriptionId = (obj.subscription as string | null) ?? null;
@@ -162,59 +158,32 @@ Deno.serve(async (req: Request) => {
 
     if (!customerId) {
       console.error('Evento sem customer:', event.id, event.type);
+      await marcarVisto(supabaseService, event.id, event.type);
       return resp('"ok"', 200);
     }
 
-    // ── 5. Re-fetch canônico: o estado real está na Stripe ─────────────────
-    // Com subscription_id, vamos direto nele; senão, listamos a sub mais
-    // recente do customer (cobre fora-de-ordem em que `updated` chega antes de
-    // `created` e ainda não temos id em mãos).
-    let sub: Stripe.Subscription | null = null;
+    // ── 5. Resolver identidade: user_id ancorado OU e-mail (checkout-first) ─
+    // Preferir user_id já conhecido: customer.metadata.supabase_user_id
+    // (carimbado quando o checkout parte do app logado) → senão lookup em
+    // subscriptions por stripe_customer_id. Se nenhum, cair pro e-mail do
+    // customer (coletado pelo Stripe Checkout): o passo 7 concede por e-mail
+    // se a conta existe, ou guarda pendente se ainda não existe.
+    let supabaseUserId: string | null = null;
+    let customerEmail: string | null = null;
     try {
-      if (subscriptionId) {
-        sub = await stripe.subscriptions.retrieve(subscriptionId);
-      } else {
-        const list = await stripe.subscriptions.list({
-          customer: customerId,
-          status: 'all',
-          limit: 1,
-        });
-        sub = list.data[0] ?? null;
+      const customer = await stripe.customers.retrieve(customerId);
+      if (customer && !('deleted' in customer && customer.deleted)) {
+        const c = customer as Stripe.Customer;
+        const fromMeta = (c.metadata ?? {})['supabase_user_id'];
+        if (typeof fromMeta === 'string' && fromMeta.length > 0) {
+          supabaseUserId = fromMeta;
+        }
+        if (typeof c.email === 'string' && c.email.length > 0) {
+          customerEmail = c.email;
+        }
       }
     } catch (e) {
-      console.error('Re-fetch da subscription falhou:', (e as Error).message);
-      return resp('"erro_interno"', 500);
-    }
-
-    if (!sub) {
-      // Sem subscription resolvível (ex.: customer recém-criado sem sub).
-      // Nada a convergir; evento já está dedupe-ado.
-      console.log('Sem subscription p/ customer', customerId, '— nada a aplicar.');
-      return resp('"ok"', 200);
-    }
-
-    // ── 6. Resolver supabase_user_id (ancoragem em cascata) ────────────────
-    // 1º subscription.metadata (gravado pela rota /api/checkout da LP),
-    // 2º customer.metadata, 3º lookup em subscriptions por stripe_customer_id.
-    let supabaseUserId: string | null = null;
-    const subMeta = (sub.metadata ?? {})['supabase_user_id'];
-    if (typeof subMeta === 'string' && subMeta.length > 0) {
-      supabaseUserId = subMeta;
-    }
-
-    if (!supabaseUserId) {
-      try {
-        const customer = await stripe.customers.retrieve(customerId);
-        if (customer && !('deleted' in customer && customer.deleted)) {
-          const md = (customer as Stripe.Customer).metadata ?? {};
-          const fromMeta = md['supabase_user_id'];
-          if (typeof fromMeta === 'string' && fromMeta.length > 0) {
-            supabaseUserId = fromMeta;
-          }
-        }
-      } catch (e) {
-        console.error('customers.retrieve falhou:', (e as Error).message);
-      }
+      console.error('customers.retrieve falhou:', (e as Error).message);
     }
 
     if (!supabaseUserId) {
@@ -226,33 +195,123 @@ Deno.serve(async (req: Request) => {
       supabaseUserId = (row?.user_id as string | null) ?? null;
     }
 
-    if (!supabaseUserId) {
-      console.error('Não foi possível resolver supabase_user_id p/ customer', customerId);
+    // Sem user_id E sem e-mail não há como vincular: marca visto e abandona.
+    if (!supabaseUserId && !customerEmail) {
+      console.error('Sem user_id e sem e-mail p/ customer', customerId);
+      await marcarVisto(supabaseService, event.id, event.type);
       return resp('"ok"', 200);
     }
 
-    // ── 7. Persistência canônica via RPC ───────────────────────────────────
-    const priceId  = sub.items?.data?.[0]?.price?.id ?? null;
-    const periodEnd =
-      sub.current_period_end != null
-        ? new Date(sub.current_period_end * 1000).toISOString()
-        : null;
-
-    const { error: rpcErr } = await supabaseService.rpc('aplicar_estado_assinatura', {
-      p_user_id:              supabaseUserId,
-      p_provider:             'stripe',
-      p_status:               mapearStatus(sub.status),
-      p_product_id:           priceId,
-      p_current_period_end:   periodEnd,
-      p_cancel_at_period_end: !!sub.cancel_at_period_end,
-      p_stripe_customer_id:   customerId,
-      p_provider_sub_id:      sub.id,
-    });
-
-    if (rpcErr) {
-      console.error('aplicar_estado_assinatura falhou:', rpcErr.message);
+    // ── 6. Re-fetch canônico: o estado real está na Stripe ─────────────────
+    // Se temos um subscription_id, vamos direto nele (o mais recente do
+    // ponto de vista do evento). Senão, listamos a sub mais recente do
+    // customer (cobre fora-de-ordem em que `updated` chega antes de
+    // `created` e ainda não temos id em mãos).
+    let sub: Stripe.Subscription | null = null;
+    try {
+      if (subscriptionId) {
+        sub = await stripe.subscriptions.retrieve(subscriptionId);
+      } else {
+        const list = await stripe.subscriptions.list({
+          customer: customerId,
+          status: 'all',
+          limit: 3,
+        });
+        if (list.data.length > 0) {
+          sub = list.data
+            .slice()
+            .sort((a, b) => (b.created ?? 0) - (a.created ?? 0))[0];
+        }
+      }
+    } catch (e) {
+      console.error('Re-fetch da subscription falhou:', (e as Error).message);
+      // Não marca visto → próxima retry da Stripe reprocessa.
       return resp('"erro_interno"', 500);
     }
+
+    // ── 7. Escrita canônica do entitlement ─────────────────────────────────
+    // Toda escrita passa por uma RPC (única porta, com a regra de convergência
+    // multiplataforma). Só escreve se há `sub` (estado real). Dois caminhos:
+    //   • user_id ancorado → aplicar_estado_assinatura (direto pelo id) e fixa
+    //     o stripe_customer_id pra resolução futura.
+    //   • sem user_id, com e-mail (checkout-first) → aplicar_estado_por_email:
+    //     concede se a conta existe, senão guarda pending_entitlements (o
+    //     trigger de signup reconcilia). A própria RPC fixa o customer_id.
+    // Sem `sub` (ex.: payment_failed sem subscription resolvível): no caminho
+    // ancorado, só garante o stripe_customer_id; no caminho e-mail, nada a fazer.
+    if (sub) {
+      const priceId  = sub.items?.data?.[0]?.price?.id ?? null;
+      const periodEnd =
+        sub.current_period_end != null
+          ? new Date(sub.current_period_end * 1000).toISOString()
+          : null;
+
+      if (supabaseUserId) {
+        const { error: rpcErr } = await supabaseService.rpc(
+          'aplicar_estado_assinatura',
+          {
+            p_user_id:              supabaseUserId,
+            p_provider:             'stripe',
+            p_status:               sub.status,
+            p_product_id:           priceId,
+            p_current_period_end:   periodEnd,
+            p_cancel_at_period_end: !!sub.cancel_at_period_end,
+            p_provider_sub_id:      sub.id,
+          },
+        );
+        if (rpcErr) {
+          console.error('RPC aplicar_estado_assinatura falhou:', rpcErr.message);
+          // Não marca visto → próxima retry reprocessa (RPC é idempotente).
+          return resp('"erro_interno"', 500);
+        }
+      } else {
+        const { error: emailErr } = await supabaseService.rpc(
+          'aplicar_estado_por_email',
+          {
+            p_email:                customerEmail,
+            p_provider:             'stripe',
+            p_status:               sub.status,
+            p_product_id:           priceId,
+            p_current_period_end:   periodEnd,
+            p_cancel_at_period_end: !!sub.cancel_at_period_end,
+            p_provider_sub_id:      sub.id,
+            p_stripe_customer_id:   customerId,
+          },
+        );
+        if (emailErr) {
+          console.error('RPC aplicar_estado_por_email falhou:', emailErr.message);
+          return resp('"erro_interno"', 500);
+        }
+      }
+    }
+
+    // stripe_customer_id auxiliar (Stripe-only) p/ resolver customer→user no
+    // passo 5 de eventos futuros. Só no caminho ancorado: no caminho e-mail a
+    // própria RPC já o fixou (ou guardou no pending). Upsert parcial: no
+    // conflito atualiza só o customer; sem linha (payment_failed como 1º
+    // evento) cria uma mínima (status default 'none').
+    if (supabaseUserId) {
+      const { error: custErr } = await supabaseService
+        .from('subscriptions')
+        .upsert(
+          {
+            user_id: supabaseUserId,
+            stripe_customer_id: customerId,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' },
+        );
+      if (custErr) {
+        console.error('Upsert stripe_customer_id falhou:', custErr.message);
+        return resp('"erro_interno"', 500);
+      }
+    }
+
+    // ── 8. Marca visto SÓ APÓS sucesso ─────────────────────────────────────
+    // Inversão proposital: se algo falhar antes daqui, a Stripe re-entrega
+    // e o UPSERT idempotente refaz o estado sem dano. Marcar antes correria
+    // o risco de "evento visto mas estado não persistido".
+    await marcarVisto(supabaseService, event.id, event.type);
 
     return resp('"ok"', 200);
   } catch (e) {
