@@ -330,6 +330,12 @@ class T {
     'Compras restauradas.',
     'Käufe wiederhergestellt.',
   );
+  static String get premiumJaCompreiWeb => _g(
+    'Já comprei na web',
+    'I already paid on the web',
+    'Ya pagué en la web',
+    'Ich habe bereits im Web bezahlt',
+  );
   static String get premiumNadaRestaurar => _g(
     'Nenhuma assinatura encontrada para restaurar nesta conta.',
     'No subscription found to restore on this account.',

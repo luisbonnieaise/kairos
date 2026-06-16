@@ -162,18 +162,24 @@ Deno.serve(async (req: Request) => {
       return resp('"ok"', 200);
     }
 
-    // ── 5. Resolver supabase_user_id (ancoragem dupla) ─────────────────────
-    // Preferir customer.metadata.supabase_user_id (gravado pelo checkout).
-    // Fallback: lookup em subscriptions por stripe_customer_id (também
-    // gravado no checkout). Se ambos falharem, marcar visto e abandonar.
+    // ── 5. Resolver identidade: user_id ancorado OU e-mail (checkout-first) ─
+    // Preferir user_id já conhecido: customer.metadata.supabase_user_id
+    // (carimbado quando o checkout parte do app logado) → senão lookup em
+    // subscriptions por stripe_customer_id. Se nenhum, cair pro e-mail do
+    // customer (coletado pelo Stripe Checkout): o passo 7 concede por e-mail
+    // se a conta existe, ou guarda pendente se ainda não existe.
     let supabaseUserId: string | null = null;
+    let customerEmail: string | null = null;
     try {
       const customer = await stripe.customers.retrieve(customerId);
       if (customer && !('deleted' in customer && customer.deleted)) {
-        const md = (customer as Stripe.Customer).metadata ?? {};
-        const fromMeta = md['supabase_user_id'];
+        const c = customer as Stripe.Customer;
+        const fromMeta = (c.metadata ?? {})['supabase_user_id'];
         if (typeof fromMeta === 'string' && fromMeta.length > 0) {
           supabaseUserId = fromMeta;
+        }
+        if (typeof c.email === 'string' && c.email.length > 0) {
+          customerEmail = c.email;
         }
       }
     } catch (e) {
@@ -189,8 +195,9 @@ Deno.serve(async (req: Request) => {
       supabaseUserId = (row?.user_id as string | null) ?? null;
     }
 
-    if (!supabaseUserId) {
-      console.error('Não foi possível resolver supabase_user_id p/ customer', customerId);
+    // Sem user_id E sem e-mail não há como vincular: marca visto e abandona.
+    if (!supabaseUserId && !customerEmail) {
+      console.error('Sem user_id e sem e-mail p/ customer', customerId);
       await marcarVisto(supabaseService, event.id, event.type);
       return resp('"ok"', 200);
     }
@@ -222,12 +229,16 @@ Deno.serve(async (req: Request) => {
       return resp('"erro_interno"', 500);
     }
 
-    // ── 7. Escrita canônica via RPC aplicar_estado_assinatura ──────────────
-    // A RPC é a ÚNICA porta de escrita do entitlement (mesma usada por
-    // apple/google/verify-purchase), com a regra de convergência multiplataforma.
-    // Com sub: aplica o estado real (provider='stripe'). Sem sub (ex.:
-    // payment_failed sem subscription resolvível): NÃO toca status — apenas
-    // garante o stripe_customer_id pra resolução futura.
+    // ── 7. Escrita canônica do entitlement ─────────────────────────────────
+    // Toda escrita passa por uma RPC (única porta, com a regra de convergência
+    // multiplataforma). Só escreve se há `sub` (estado real). Dois caminhos:
+    //   • user_id ancorado → aplicar_estado_assinatura (direto pelo id) e fixa
+    //     o stripe_customer_id pra resolução futura.
+    //   • sem user_id, com e-mail (checkout-first) → aplicar_estado_por_email:
+    //     concede se a conta existe, senão guarda pending_entitlements (o
+    //     trigger de signup reconcilia). A própria RPC fixa o customer_id.
+    // Sem `sub` (ex.: payment_failed sem subscription resolvível): no caminho
+    // ancorado, só garante o stripe_customer_id; no caminho e-mail, nada a fazer.
     if (sub) {
       const priceId  = sub.items?.data?.[0]?.price?.id ?? null;
       const periodEnd =
@@ -235,43 +246,65 @@ Deno.serve(async (req: Request) => {
           ? new Date(sub.current_period_end * 1000).toISOString()
           : null;
 
-      const { error: rpcErr } = await supabaseService.rpc(
-        'aplicar_estado_assinatura',
-        {
-          p_user_id:              supabaseUserId,
-          p_provider:             'stripe',
-          p_status:               sub.status,
-          p_product_id:           priceId,
-          p_current_period_end:   periodEnd,
-          p_cancel_at_period_end: !!sub.cancel_at_period_end,
-          p_provider_sub_id:      sub.id,
-        },
-      );
-      if (rpcErr) {
-        console.error('RPC aplicar_estado_assinatura falhou:', rpcErr.message);
-        // Não marca visto → próxima retry reprocessa (RPC é idempotente).
-        return resp('"erro_interno"', 500);
+      if (supabaseUserId) {
+        const { error: rpcErr } = await supabaseService.rpc(
+          'aplicar_estado_assinatura',
+          {
+            p_user_id:              supabaseUserId,
+            p_provider:             'stripe',
+            p_status:               sub.status,
+            p_product_id:           priceId,
+            p_current_period_end:   periodEnd,
+            p_cancel_at_period_end: !!sub.cancel_at_period_end,
+            p_provider_sub_id:      sub.id,
+          },
+        );
+        if (rpcErr) {
+          console.error('RPC aplicar_estado_assinatura falhou:', rpcErr.message);
+          // Não marca visto → próxima retry reprocessa (RPC é idempotente).
+          return resp('"erro_interno"', 500);
+        }
+      } else {
+        const { error: emailErr } = await supabaseService.rpc(
+          'aplicar_estado_por_email',
+          {
+            p_email:                customerEmail,
+            p_provider:             'stripe',
+            p_status:               sub.status,
+            p_product_id:           priceId,
+            p_current_period_end:   periodEnd,
+            p_cancel_at_period_end: !!sub.cancel_at_period_end,
+            p_provider_sub_id:      sub.id,
+            p_stripe_customer_id:   customerId,
+          },
+        );
+        if (emailErr) {
+          console.error('RPC aplicar_estado_por_email falhou:', emailErr.message);
+          return resp('"erro_interno"', 500);
+        }
       }
     }
 
-    // stripe_customer_id é auxiliar (Stripe-only) p/ resolver customer→user
-    // no passo 5 de eventos futuros. Persistido fora da RPC genérica via
-    // upsert parcial: no conflito atualiza só o customer (preserva o status
-    // escrito pela RPC); sem linha (ex.: payment_failed como 1º evento), cria
-    // uma linha mínima (status default 'none').
-    const { error: custErr } = await supabaseService
-      .from('subscriptions')
-      .upsert(
-        {
-          user_id: supabaseUserId,
-          stripe_customer_id: customerId,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id' },
-      );
-    if (custErr) {
-      console.error('Upsert stripe_customer_id falhou:', custErr.message);
-      return resp('"erro_interno"', 500);
+    // stripe_customer_id auxiliar (Stripe-only) p/ resolver customer→user no
+    // passo 5 de eventos futuros. Só no caminho ancorado: no caminho e-mail a
+    // própria RPC já o fixou (ou guardou no pending). Upsert parcial: no
+    // conflito atualiza só o customer; sem linha (payment_failed como 1º
+    // evento) cria uma mínima (status default 'none').
+    if (supabaseUserId) {
+      const { error: custErr } = await supabaseService
+        .from('subscriptions')
+        .upsert(
+          {
+            user_id: supabaseUserId,
+            stripe_customer_id: customerId,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' },
+        );
+      if (custErr) {
+        console.error('Upsert stripe_customer_id falhou:', custErr.message);
+        return resp('"erro_interno"', 500);
+      }
     }
 
     // ── 8. Marca visto SÓ APÓS sucesso ─────────────────────────────────────

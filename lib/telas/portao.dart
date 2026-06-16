@@ -128,6 +128,16 @@ class _TelaPortaoState extends State<TelaPortao> {
     await Billing.instance.restaurar();
   }
 
+  // "Já comprei na web": reconcilia a assinatura Stripe (landing) pelo e-mail
+  // do usuário logado. Reusa os eventos do restore (restaurado → entra no app).
+  Future<void> _restaurarWeb() async {
+    setState(() {
+      _erro = null;
+      _aviso = null;
+    });
+    await Billing.instance.restaurarWeb();
+  }
+
   Future<void> _sair() async {
     await supabase.auth.signOut();
     Billing.instance.limparCache();
@@ -250,6 +260,15 @@ class _TelaPortaoState extends State<TelaPortao> {
                                   onPrivacidade: () => _abrirLink(kUrlPrivacidade)),
                             ],
                           ),
+                        ),
+                      ),
+
+                      // Já assinou na web (Stripe): reconcilia pelo e-mail.
+                      Center(
+                        child: TextButton(
+                          onPressed: _processando ? null : _restaurarWeb,
+                          child: Text(T.premiumJaCompreiWeb,
+                              style: KT.caption(cor: KC.fumo)),
                         ),
                       ),
 

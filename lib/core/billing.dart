@@ -151,6 +151,38 @@ class Billing {
     }
   }
 
+  /// "Já comprei na web": reconcilia a assinatura Stripe (landing/checkout-first)
+  /// do usuário logado pelo PRÓPRIO e-mail, via a Edge Function `restore-stripe`.
+  /// Cobre ter assinado na web e o stripe-webhook ainda não ter convergido (ou
+  /// um pendente que não reconciliou no signup). Emite os MESMOS eventos do
+  /// restore de IAP (restaurado/nadaParaRestaurar/erro) — o portão já reage.
+  Future<void> restaurarWeb() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      _emitir(BillingEvento.erro);
+      return;
+    }
+    _emitir(BillingEvento.processando);
+    try {
+      final resp = await supabase.functions.invoke('restore-stripe');
+      if (resp.status != 200) {
+        debugPrint('[Billing] restore-stripe ${resp.status}: ${resp.data}');
+        _emitir(BillingEvento.erro);
+        return;
+      }
+      await refresh();
+      final data = resp.data;
+      final encontrado =
+          (data is Map && data['encontrado'] == true) || _cache == true;
+      _emitir(encontrado
+          ? BillingEvento.restaurado
+          : BillingEvento.nadaParaRestaurar);
+    } catch (e) {
+      debugPrint('[Billing] restaurarWeb falhou: $e');
+      _emitir(BillingEvento.erro);
+    }
+  }
+
   // ── Handler do purchaseStream ──────────────────────────────────────────────
   Future<void> _aoAtualizarCompras(List<PurchaseDetails> compras) async {
     // Qualquer entrega do stream durante uma restauração cancela o fallback
