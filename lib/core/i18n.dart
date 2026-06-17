@@ -85,6 +85,30 @@ class T {
   // ── AUTENTICAÇÃO ───────────────────────────────────────────────────────────
   static String get criarConta => _g('Criar conta', 'Create account', 'Crear cuenta', 'Konto erstellen');
   static String get entrar     => _g('Entrar', 'Sign in', 'Iniciar sesión', 'Anmelden');
+  static String get authSubtituloEntrar => _g(
+    'Continue de onde parou.',
+    'Pick up where you left off.',
+    'Continúa donde lo dejaste.',
+    'Mach dort weiter, wo du aufgehört hast.',
+  );
+  static String get authSubtituloCadastro => _g(
+    'Comece sua prática.',
+    'Begin your practice.',
+    'Comienza tu práctica.',
+    'Beginne deine Praxis.',
+  );
+  static String get mostrarSenha => _g(
+    'Mostrar senha',
+    'Show password',
+    'Mostrar contraseña',
+    'Passwort anzeigen',
+  );
+  static String get ocultarSenha => _g(
+    'Ocultar senha',
+    'Hide password',
+    'Ocultar contraseña',
+    'Passwort verbergen',
+  );
   static String get comoTeChamar => _g(
     'COMO PODEMOS TE CHAMAR',
     'WHAT SHOULD WE CALL YOU',
@@ -173,11 +197,17 @@ class T {
   );
 
   // Confirmação de e-mail (signup com confirmation ligada)
-  static String get confirmeSeuEmail => _g(
-    'CONFIRME SEU E-MAIL',
-    'CONFIRM YOUR EMAIL',
-    'CONFIRMA TU CORREO',
-    'BESTÄTIGE DEINE E-MAIL',
+  static String get confirmeSeuEmailTitulo => _g(
+    'Confirme seu e-mail',
+    'Confirm your email',
+    'Confirma tu correo',
+    'Bestätige deine E-Mail',
+  );
+  static String get confirmeSeuEmailSub => _g(
+    'Falta um passo.',
+    'One step to go.',
+    'Falta un paso.',
+    'Nur noch ein Schritt.',
   );
   static String get enviamosConfirmacao => _g(
     'Enviamos um link de confirmação para o seu e-mail. Toque no link para ativar a sua conta e depois faça login.',
@@ -211,6 +241,12 @@ class T {
   );
 
   // Recuperar senha
+  static String get recuperarSenhaEyebrow => _g(
+    'RECUPERAÇÃO',
+    'RECOVERY',
+    'RECUPERACIÓN',
+    'WIEDERHERSTELLUNG',
+  );
   static String get recuperarSenha => _g(
     'Recuperar senha',
     'Recover password',
