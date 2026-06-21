@@ -10,6 +10,7 @@ import '../core/claude_api.dart';
 import '../core/banco.dart';
 import '../core/transcricao.dart';
 import '../core/i18n.dart';
+import 'premium.dart';
 
 class TelaMentor extends StatefulWidget {
   const TelaMentor({super.key});
@@ -28,6 +29,13 @@ class _TelaMentorState extends State<TelaMentor> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   bool _pensando = false;
+
+  // Paginação reversa do histórico (puxar a conversa pra baixo carrega o mais
+  // antigo). `_maisAntiga` é o cursor (created_at da mensagem mais antiga em
+  // tela); `_temMaisHistorico` vira false quando uma página vem incompleta.
+  DateTime? _maisAntiga;
+  bool _temMaisHistorico = true;
+  bool _carregandoAntigas = false;
 
   // Estado de texto (alterna entre o botão de microfone e o de enviar).
   bool _temTexto = false;
@@ -62,15 +70,14 @@ class _TelaMentorState extends State<TelaMentor> {
       setState(() {
         if (salvas.isEmpty) {
           _mensagens.add(_Mensagem(texto: T.mentorSaudacao(nome), doMentor: true));
+          _temMaisHistorico = false;
         } else {
           for (final m in salvas) {
-            _mensagens.add(_Mensagem(
-              texto: (m['conteudo'] as String?) ?? '',
-              doMentor: m['role'] == 'assistant',
-              audioPathRemoto: m['audio_path'] as String?,
-              audioDuracaoMs: m['audio_duracao_ms'] as int?,
-            ));
+            _mensagens.add(_mensagemDeRegistro(m));
           }
+          _maisAntiga = _createdAt(salvas.first);
+          // Página cheia → provavelmente há histórico mais antigo a carregar.
+          _temMaisHistorico = salvas.length >= BancoMensagens.pagina;
         }
       });
 
@@ -82,9 +89,45 @@ class _TelaMentorState extends State<TelaMentor> {
           texto: T.mentorSaudacao(''),
           doMentor: true,
         ));
+        _temMaisHistorico = false;
       });
     }
   }
+
+  /// Puxar a conversa pra baixo (no topo) carrega a página anterior do
+  /// histórico e a prepende. Cursor = `_maisAntiga`; para quando uma página
+  /// vier incompleta (`_temMaisHistorico` = false).
+  Future<void> _carregarMaisAntigas() async {
+    if (_carregandoAntigas || !_temMaisHistorico || _maisAntiga == null) return;
+    setState(() => _carregandoAntigas = true);
+    try {
+      final antigas = await BancoMensagens.carregarAntigas(antesDe: _maisAntiga!);
+      if (!mounted) return;
+      setState(() {
+        if (antigas.isEmpty) {
+          _temMaisHistorico = false;
+        } else {
+          _mensagens.insertAll(0, antigas.map(_mensagemDeRegistro));
+          _maisAntiga = _createdAt(antigas.first);
+          _temMaisHistorico = antigas.length >= BancoMensagens.pagina;
+        }
+      });
+    } catch (_) {
+      // Falha silenciosa: mantém o que já está em tela.
+    } finally {
+      if (mounted) setState(() => _carregandoAntigas = false);
+    }
+  }
+
+  _Mensagem _mensagemDeRegistro(Map<String, dynamic> m) => _Mensagem(
+        texto: (m['conteudo'] as String?) ?? '',
+        doMentor: m['role'] == 'assistant',
+        audioPathRemoto: m['audio_path'] as String?,
+        audioDuracaoMs: m['audio_duracao_ms'] as int?,
+      );
+
+  DateTime? _createdAt(Map<String, dynamic> m) =>
+      DateTime.tryParse((m['created_at'] as String?) ?? '');
 
   Future<void> _enviar() async {
     final texto = _controller.text.trim();
@@ -142,10 +185,15 @@ class _TelaMentorState extends State<TelaMentor> {
       BancoMensagens.salvar(role: 'assistant', conteudo: resposta);
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _mensagens.add(_Mensagem(texto: T.mentorErro, doMentor: true));
-        _pensando = false;
-      });
+      if (e.toString().contains('precisa_assinar')) {
+        setState(() => _pensando = false);
+        _abrirPaywall();
+      } else {
+        setState(() {
+          _mensagens.add(_Mensagem(texto: T.mentorErro, doMentor: true));
+          _pensando = false;
+        });
+      }
     }
 
     _rolarParaBaixo();
@@ -278,9 +326,23 @@ class _TelaMentorState extends State<TelaMentor> {
       if (!mounted) return;
       setState(() => msg.transcrevendo = false);
       final codigo = e.toString();
-      _snack(codigo.contains('rate_limit') ? T.mentorAudioLimite : T.mentorAudioErro);
+      if (codigo.contains('precisa_assinar')) {
+        _abrirPaywall();
+      } else {
+        _snack(codigo.contains('rate_limit') ? T.mentorAudioLimite : T.mentorAudioErro);
+      }
       _rolarParaBaixo();
     }
+  }
+
+  /// Recurso premium acionado sem assinatura ativa (403 do servidor): avisa e
+  /// leva ao paywall. Cobre tanto o chat de texto quanto a mensagem de voz.
+  void _abrirPaywall() {
+    if (!mounted) return;
+    _snack(T.mentorPrecisaAssinar);
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const TelaPremium()),
+    );
   }
 
   void _snack(String msg) {
@@ -346,18 +408,26 @@ class _TelaMentorState extends State<TelaMentor> {
             ),
           ),
 
-          // Fluxo de mensagens — sem balões, texto puro
+          // Fluxo de mensagens — sem balões, texto puro. Puxar pra baixo no
+          // topo carrega o histórico mais antigo (conversas anteriores).
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
-              itemCount: _mensagens.length + (_pensando ? 1 : 0),
-              itemBuilder: (context, i) {
-                if (_pensando && i == _mensagens.length) {
-                  return const _IndicadorPensando();
-                }
-                return _BolhaMensagem(mensagem: _mensagens[i]);
-              },
+            child: RefreshIndicator(
+              onRefresh: _carregarMaisAntigas,
+              color: KC.acento,
+              backgroundColor: KC.card,
+              edgeOffset: 8,
+              child: ListView.builder(
+                controller: _scrollController,
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+                itemCount: _mensagens.length + (_pensando ? 1 : 0),
+                itemBuilder: (context, i) {
+                  if (_pensando && i == _mensagens.length) {
+                    return const _IndicadorPensando();
+                  }
+                  return _BolhaMensagem(mensagem: _mensagens[i]);
+                },
+              ),
             ),
           ),
 

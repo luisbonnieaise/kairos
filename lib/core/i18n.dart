@@ -549,6 +549,12 @@ class T {
     'Has alcanzado el límite de audios por ahora. Inténtalo más tarde.',
     'Du hast das Audiolimit vorerst erreicht. Versuche es später.',
   );
+  static String get mentorPrecisaAssinar => _g(
+    'O Mentor é um recurso premium. Assine para conversar e enviar áudios.',
+    'The Mentor is a premium feature. Subscribe to chat and send audio.',
+    'El Mentor es una función premium. Suscríbete para conversar y enviar audios.',
+    'Der Mentor ist eine Premium-Funktion. Abonniere, um zu chatten und Audios zu senden.',
+  );
 
   // ── DOJÔ (PRÁTICAS) ────────────────────────────────────────────────────────
   static String get dojo => _g('Dôjo', 'Dojo', 'Dojo', 'Dojo');

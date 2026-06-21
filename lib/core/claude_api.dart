@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
 import 'i18n.dart';
 
@@ -20,34 +21,43 @@ class ClaudeAPI {
     required List<Map<String, String>> mensagens,
     bool prefereSonnet = true,
   }) async {
-    final resposta = await supabase.functions.invoke(
-      'mentor-chat',
-      body: {
-        'messages': mensagens,
-        'prefereSonnet': prefereSonnet,
-        'idioma': T.idioma,
-      },
-    );
+    try {
+      final resposta = await supabase.functions.invoke(
+        'mentor-chat',
+        body: {
+          'messages': mensagens,
+          'prefereSonnet': prefereSonnet,
+          'idioma': T.idioma,
+        },
+      );
 
-    if (resposta.status != 200) {
-      debugPrint('mentor-chat retornou ${resposta.status}: ${resposta.data}');
-      throw Exception('mentor_erro');
-    }
+      final data = resposta.data as Map<String, dynamic>?;
+      if (resposta.status != 200 || data == null) {
+        debugPrint('mentor-chat retornou ${resposta.status}: ${resposta.data}');
+        // Propaga o código do servidor ('precisa_assinar', 'rate_limit', ...)
+        // para a UI tratar; sem código conhecido, cai no genérico.
+        throw Exception(_codigo(data) ?? 'mentor_erro');
+      }
+      if (data['error'] != null) {
+        debugPrint('mentor-chat error: ${data['error']}');
+        throw Exception(data['error'] as String);
+      }
 
-    final data = resposta.data as Map<String, dynamic>?;
-    if (data == null) {
-      throw Exception('mentor_erro');
+      final texto = data['text'] as String?;
+      if (texto == null || texto.isEmpty) {
+        throw Exception('mentor_erro');
+      }
+      return texto;
+    } on FunctionException catch (e) {
+      // Em versões recentes do functions_client, invoke lança em status >= 400;
+      // o corpo JSON da função (com o `error`) vem em e.details.
+      debugPrint('mentor-chat FunctionException ${e.status}: ${e.details}');
+      final det = e.details;
+      final codigo = det is Map ? det['error'] as String? : null;
+      throw Exception(codigo ?? 'mentor_erro');
     }
-
-    if (data['error'] != null) {
-      debugPrint('mentor-chat error: ${data['error']}');
-      throw Exception('mentor_erro');
-    }
-
-    final texto = data['text'] as String?;
-    if (texto == null || texto.isEmpty) {
-      throw Exception('mentor_erro');
-    }
-    return texto;
   }
+
+  static String? _codigo(Map<String, dynamic>? data) =>
+      data != null ? data['error'] as String? : null;
 }

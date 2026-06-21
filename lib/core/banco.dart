@@ -180,9 +180,12 @@ class BancoTutoriais {
 // ── MENSAGENS DO MENTOR ──────────────────────────────────────────────────────
 
 class BancoMensagens {
+  /// Tamanho de página do histórico (carga inicial e cada "puxar pra carregar").
+  static const int pagina = 50;
+
   /// Carrega as últimas [limite] mensagens em ordem cronológica.
   /// Limitado por padrão para evitar payload grande e contexto inflado pro Mentor.
-  static Future<List<Map<String, dynamic>>> carregar({int limite = 50}) async {
+  static Future<List<Map<String, dynamic>>> carregar({int limite = pagina}) async {
     final user = supabase.auth.currentUser;
     if (user == null) return [];
 
@@ -191,6 +194,28 @@ class BancoMensagens {
         .from('mensagens')
         .select()
         .eq('user_id', user.id)
+        .order('created_at', ascending: false)
+        .limit(limite);
+
+    final lista = List<Map<String, dynamic>>.from(dados);
+    return lista.reversed.toList();
+  }
+
+  /// Carrega até [limite] mensagens ANTERIORES a [antesDe] (paginação reversa
+  /// do histórico — usada ao puxar a conversa pra baixo). Devolve em ordem
+  /// cronológica; lista vazia significa que não há mais histórico.
+  static Future<List<Map<String, dynamic>>> carregarAntigas({
+    required DateTime antesDe,
+    int limite = pagina,
+  }) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return [];
+
+    final dados = await supabase
+        .from('mensagens')
+        .select()
+        .eq('user_id', user.id)
+        .lt('created_at', antesDe.toUtc().toIso8601String())
         .order('created_at', ascending: false)
         .limit(limite);
 
