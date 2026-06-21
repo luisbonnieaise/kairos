@@ -1,8 +1,14 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:record/record.dart';
 import '../core/kairo_tema.dart';
 import '../core/claude_api.dart';
 import '../core/banco.dart';
+import '../core/transcricao.dart';
 import '../core/i18n.dart';
 
 class TelaMentor extends StatefulWidget {
@@ -13,16 +19,36 @@ class TelaMentor extends StatefulWidget {
 }
 
 class _TelaMentorState extends State<TelaMentor> {
+  // Teto de gravação: 2 minutos. Casa com o limite de tamanho do bucket/função.
+  static const _maxGravacaoMs = 120 * 1000;
+  // Abaixo disso a gravação é descartada (toque acidental no microfone).
+  static const _minGravacaoMs = 1000;
+
   final List<_Mensagem> _mensagens = [];
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   bool _pensando = false;
 
+  // Estado de texto (alterna entre o botão de microfone e o de enviar).
+  bool _temTexto = false;
+
+  // Estado de gravação de voz.
+  final _gravador = AudioRecorder();
+  bool _gravando = false;
+  Timer? _timerGravacao;
+  int _msGravacao = 0;
+
   @override
   void initState() {
     super.initState();
+    _controller.addListener(_onTextoMudou);
     _carregarHistorico();
     // Tutorial é disparado pelo Home ao chegar na aba.
+  }
+
+  void _onTextoMudou() {
+    final tem = _controller.text.trim().isNotEmpty;
+    if (tem != _temTexto) setState(() => _temTexto = tem);
   }
 
   Future<void> _carregarHistorico() async {
@@ -39,8 +65,10 @@ class _TelaMentorState extends State<TelaMentor> {
         } else {
           for (final m in salvas) {
             _mensagens.add(_Mensagem(
-              texto: m['conteudo'] as String,
+              texto: (m['conteudo'] as String?) ?? '',
               doMentor: m['role'] == 'assistant',
+              audioPathRemoto: m['audio_path'] as String?,
+              audioDuracaoMs: m['audio_duracao_ms'] as int?,
             ));
           }
         }
@@ -60,14 +88,13 @@ class _TelaMentorState extends State<TelaMentor> {
 
   Future<void> _enviar() async {
     final texto = _controller.text.trim();
-    if (texto.isEmpty || _pensando) return;
+    if (texto.isEmpty || _pensando || _gravando) return;
 
     HapticFeedback.lightImpact();
 
     setState(() {
       _mensagens.add(_Mensagem(texto: texto, doMentor: false));
       _controller.clear();
-      _pensando = true;
     });
 
     _rolarParaBaixo();
@@ -75,11 +102,22 @@ class _TelaMentorState extends State<TelaMentor> {
     // Salva a mensagem do usuário em paralelo (não bloqueia a resposta)
     BancoMensagens.salvar(role: 'user', conteudo: texto);
 
+    await _responderMentor();
+  }
+
+  /// Pede ao Mentor a próxima resposta a partir do histórico atual em tela.
+  /// Compartilhado pelo envio de texto e pelo de voz (após transcrever).
+  Future<void> _responderMentor() async {
+    setState(() => _pensando = true);
+    _rolarParaBaixo();
+
     try {
       final inicio = DateTime.now();
 
       final historico = _mensagens
           .where((m) => !(m == _mensagens.first && m.doMentor))
+          // Bolhas de voz sem transcrição (silêncio) não vão pro contexto.
+          .where((m) => m.texto.trim().isNotEmpty)
           .map((m) => {
                 'role': m.doMentor ? 'assistant' : 'user',
                 'content': m.texto,
@@ -105,15 +143,154 @@ class _TelaMentorState extends State<TelaMentor> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _mensagens.add(_Mensagem(
-          texto: T.mentorErro,
-          doMentor: true,
-        ));
+        _mensagens.add(_Mensagem(texto: T.mentorErro, doMentor: true));
         _pensando = false;
       });
     }
 
     _rolarParaBaixo();
+  }
+
+  // ── GRAVAÇÃO DE VOZ ─────────────────────────────────────────────────────────
+
+  Future<void> _iniciarGravacao() async {
+    if (_pensando || _gravando) return;
+    try {
+      if (!await _gravador.hasPermission()) {
+        _snack(T.mentorMicNegado);
+        return;
+      }
+      final caminho =
+          '${Directory.systemTemp.path}/kairo_voz_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+      // AAC LC mono — leve e suficiente para fala (entrada do Whisper).
+      await _gravador.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          bitRate: 96000,
+          sampleRate: 44100,
+          numChannels: 1,
+        ),
+        path: caminho,
+      );
+
+      HapticFeedback.lightImpact();
+      setState(() {
+        _gravando = true;
+        _msGravacao = 0;
+      });
+
+      _timerGravacao = Timer.periodic(const Duration(milliseconds: 200), (_) {
+        if (!mounted) return;
+        setState(() => _msGravacao += 200);
+        if (_msGravacao >= _maxGravacaoMs) _pararEEnviarGravacao();
+      });
+    } catch (e) {
+      debugPrint('Erro ao iniciar gravação: $e');
+      if (mounted) setState(() => _gravando = false);
+    }
+  }
+
+  Future<void> _cancelarGravacao() async {
+    _timerGravacao?.cancel();
+    try {
+      await _gravador.cancel(); // descarta o arquivo
+    } catch (_) {}
+    HapticFeedback.lightImpact();
+    if (!mounted) return;
+    setState(() => _gravando = false);
+  }
+
+  Future<void> _pararEEnviarGravacao() async {
+    if (!_gravando) return;
+    _timerGravacao?.cancel();
+    final duracaoMs = _msGravacao;
+
+    String? caminho;
+    try {
+      caminho = await _gravador.stop();
+    } catch (e) {
+      debugPrint('Erro ao parar gravação: $e');
+    }
+
+    if (!mounted) return;
+    setState(() => _gravando = false);
+
+    if (caminho == null) return;
+
+    if (duracaoMs < _minGravacaoMs) {
+      _snack(T.mentorAudioCurto);
+      try {
+        await File(caminho).delete();
+      } catch (_) {}
+      return;
+    }
+
+    HapticFeedback.lightImpact();
+    await _processarAudio(caminho, duracaoMs);
+  }
+
+  /// Faz upload do áudio, transcreve via Edge Function e — havendo texto —
+  /// segue para a resposta do Mentor. A bolha de voz aparece imediatamente,
+  /// já tocável, no estado "transcrevendo".
+  Future<void> _processarAudio(String caminhoLocal, int duracaoMs) async {
+    final msg = _Mensagem(
+      texto: '',
+      doMentor: false,
+      audioPathLocal: caminhoLocal,
+      audioDuracaoMs: duracaoMs,
+      transcrevendo: true,
+    );
+    setState(() => _mensagens.add(msg));
+    _rolarParaBaixo();
+
+    try {
+      final remoto = await BancoAudios.enviar(caminhoLocal);
+      final texto = await Transcricao.transcrever(
+        audioPath: remoto,
+        duracaoMs: duracaoMs,
+      );
+
+      if (!mounted) return;
+
+      // Persiste a bolha de voz (mesmo sem transcrição, para poder reouvir).
+      BancoMensagens.salvar(
+        role: 'user',
+        conteudo: texto.trim(),
+        audioPath: remoto,
+        audioDuracaoMs: duracaoMs,
+      );
+
+      setState(() {
+        msg.transcrevendo = false;
+        msg.texto = texto.trim();
+        msg.audioPathRemoto = remoto;
+      });
+
+      if (texto.trim().isEmpty) {
+        _snack(T.mentorAudioVazio);
+        _rolarParaBaixo();
+        return;
+      }
+
+      await _responderMentor();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => msg.transcrevendo = false);
+      final codigo = e.toString();
+      _snack(codigo.contains('rate_limit') ? T.mentorAudioLimite : T.mentorAudioErro);
+      _rolarParaBaixo();
+    }
+  }
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg, style: KT.body()),
+      backgroundColor: KC.card,
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 3),
+    ));
   }
 
   void _rolarParaBaixo() {
@@ -130,6 +307,8 @@ class _TelaMentorState extends State<TelaMentor> {
 
   @override
   void dispose() {
+    _timerGravacao?.cancel();
+    _gravador.dispose();
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -182,7 +361,7 @@ class _TelaMentorState extends State<TelaMentor> {
             ),
           ),
 
-          // Campo de entrada — fino, sem botão circular
+          // Campo de entrada — alterna entre texto e barra de gravação
           Padding(
             padding: EdgeInsets.fromLTRB(
               24,
@@ -190,61 +369,351 @@ class _TelaMentorState extends State<TelaMentor> {
               24,
               MediaQuery.of(context).viewInsets.bottom > 0 ? 8 : 16,
             ),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
-              decoration: BoxDecoration(
-                color: KC.card,
-                borderRadius: BorderRadius.circular(24),
-                border: KC.escuro ? null : Border.all(color: KC.linha, width: 1),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: KC.escuro ? 0.22 : 0.07),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+            child: _gravando ? _barraGravacao() : _barraEntrada(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Barra de entrada padrão (texto). O botão à direita vira microfone quando
+  // não há texto digitado, e seta de enviar quando há.
+  Widget _barraEntrada() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
+      decoration: BoxDecoration(
+        color: KC.card,
+        borderRadius: BorderRadius.circular(24),
+        border: KC.escuro ? null : Border.all(color: KC.linha, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: KC.escuro ? 0.22 : 0.07),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              style: KT.body(),
+              cursorColor: KC.acento,
+              cursorWidth: 1,
+              minLines: 1,
+              maxLines: 4,
+              maxLength: 1000,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                hintText: T.escreva,
+                hintStyle: KT.body(cor: KC.textoSuave),
+                border: InputBorder.none,
+                counterText: '',
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      style: KT.body(),
-                      cursorColor: KC.acento,
-                      cursorWidth: 1,
-                      minLines: 1,
-                      maxLines: 4,
-                      maxLength: 1000,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: InputDecoration(
-                        hintText: T.escreva,
-                        hintStyle: KT.body(cor: KC.textoSuave),
-                        border: InputBorder.none,
-                        counterText: '',
-                        contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      onSubmitted: (_) => _enviar(),
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: _pensando ? null : _enviar,
-                    behavior: HitTestBehavior.opaque,
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Icon(
-                        Icons.arrow_upward,
-                        color: _pensando ? KC.textoSuave : KC.acento,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                ],
+              onSubmitted: (_) => _enviar(),
+            ),
+          ),
+          GestureDetector(
+            onTap: _pensando ? null : (_temTexto ? _enviar : _iniciarGravacao),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Icon(
+                _temTexto ? Icons.arrow_upward : Icons.mic_none_rounded,
+                color: _pensando ? KC.textoSuave : KC.acento,
+                size: 20,
               ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  // Barra exibida durante a gravação: cancelar · ponto pulsante · tempo · enviar.
+  Widget _barraGravacao() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: KC.card,
+        borderRadius: BorderRadius.circular(24),
+        border: KC.escuro ? null : Border.all(color: KC.linha, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: KC.escuro ? 0.22 : 0.07),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: _cancelarGravacao,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Icon(Icons.close_rounded, color: KC.textoSuave, size: 22),
+            ),
+          ),
+          const SizedBox(width: 10),
+          const _PontoGravando(),
+          const SizedBox(width: 12),
+          Text(_formatarTempo(_msGravacao), style: KT.body()),
+          const Spacer(),
+          GestureDetector(
+            onTap: _pararEEnviarGravacao,
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: KC.acento,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.arrow_upward, color: Colors.white, size: 20),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _formatarTempo(int ms) {
+    final totalSeg = ms ~/ 1000;
+    final m = (totalSeg ~/ 60).toString().padLeft(2, '0');
+    final s = (totalSeg % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+}
+
+// ── PONTO PULSANTE DE GRAVAÇÃO ────────────────────────────────────────────────
+
+class _PontoGravando extends StatefulWidget {
+  const _PontoGravando();
+
+  @override
+  State<_PontoGravando> createState() => _PontoGravandoState();
+}
+
+class _PontoGravandoState extends State<_PontoGravando>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.35, end: 1.0).animate(_ctrl),
+      child: Container(
+        width: 10,
+        height: 10,
+        decoration: const BoxDecoration(
+          color: Color(0xFFE05A4E),
+          shape: BoxShape.circle,
+        ),
+      ),
+    );
+  }
+}
+
+// ── PLAYER DE VOZ (balão reproduzível) ────────────────────────────────────────
+
+class _PlayerAudio extends StatefulWidget {
+  final String? caminhoLocal; // arquivo recém-gravado (toca do disco)
+  final String? caminhoRemoto; // caminho no bucket (replay do histórico)
+  final int? duracaoMs;
+
+  const _PlayerAudio({
+    super.key,
+    this.caminhoLocal,
+    this.caminhoRemoto,
+    this.duracaoMs,
+  });
+
+  @override
+  State<_PlayerAudio> createState() => _PlayerAudioState();
+}
+
+class _PlayerAudioState extends State<_PlayerAudio> {
+  final _player = AudioPlayer();
+  PlayerState _estado = PlayerState.stopped;
+  Duration _posicao = Duration.zero;
+  Duration _total = Duration.zero;
+  Source? _fonte;
+  bool _carregando = false;
+
+  late final List<StreamSubscription> _subs;
+
+  @override
+  void initState() {
+    super.initState();
+    // Categoria playback para o áudio ser audível mesmo com o switch de
+    // silêncio no iOS (mensagem de voz é conteúdo deliberado, não ambiente).
+    _player.setReleaseMode(ReleaseMode.stop);
+    _player.setAudioContext(AudioContext(
+      android: AudioContextAndroid(
+        contentType: AndroidContentType.music,
+        usageType: AndroidUsageType.media,
+        audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+      ),
+      iOS: AudioContextIOS(
+        category: AVAudioSessionCategory.playback,
+        options: const {},
+      ),
+    ));
+
+    _subs = [
+      _player.onPlayerStateChanged.listen((s) {
+        if (mounted) setState(() => _estado = s);
+      }),
+      _player.onDurationChanged.listen((d) {
+        if (mounted) setState(() => _total = d);
+      }),
+      _player.onPositionChanged.listen((p) {
+        if (mounted) setState(() => _posicao = p);
+      }),
+      _player.onPlayerComplete.listen((_) {
+        if (mounted) {
+          setState(() {
+            _estado = PlayerState.completed;
+            _posicao = Duration.zero;
+          });
+        }
+      }),
+    ];
+  }
+
+  @override
+  void dispose() {
+    for (final s in _subs) {
+      s.cancel();
+    }
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _alternar() async {
+    if (_estado == PlayerState.playing) {
+      await _player.pause();
+      return;
+    }
+    if (_estado == PlayerState.paused && _fonte != null) {
+      await _player.resume();
+      return;
+    }
+    // Primeira reprodução ou após concluir: resolve a fonte e toca do início.
+    try {
+      if (_fonte == null) {
+        setState(() => _carregando = true);
+        _fonte = await _resolverFonte();
+        if (mounted) setState(() => _carregando = false);
+      }
+      final fonte = _fonte;
+      if (fonte == null) return;
+      await _player.play(fonte);
+    } catch (e) {
+      debugPrint('Erro ao tocar áudio: $e');
+      if (mounted) setState(() => _carregando = false);
+    }
+  }
+
+  Future<Source?> _resolverFonte() async {
+    final local = widget.caminhoLocal;
+    if (local != null && await File(local).exists()) {
+      return DeviceFileSource(local);
+    }
+    final remoto = widget.caminhoRemoto;
+    if (remoto != null) {
+      final url = await BancoAudios.urlAssinada(remoto);
+      return UrlSource(url);
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final totalMs = _total.inMilliseconds > 0
+        ? _total.inMilliseconds
+        : (widget.duracaoMs ?? 0);
+    final progresso = totalMs > 0
+        ? (_posicao.inMilliseconds / totalMs).clamp(0.0, 1.0)
+        : 0.0;
+    final tocando = _estado == PlayerState.playing;
+    final tempoMs = tocando ? _posicao.inMilliseconds : totalMs;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: KC.card,
+        borderRadius: BorderRadius.circular(20),
+        border: KC.escuro ? null : Border.all(color: KC.linha, width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            onTap: _alternar,
+            behavior: HitTestBehavior.opaque,
+            child: SizedBox(
+              width: 28,
+              height: 28,
+              child: _carregando
+                  ? Padding(
+                      padding: const EdgeInsets.all(5),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation(KC.acento),
+                      ),
+                    )
+                  : Icon(
+                      tocando ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      color: KC.acento,
+                      size: 26,
+                    ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 90,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: progresso,
+                minHeight: 3,
+                backgroundColor: KC.linha,
+                valueColor: AlwaysStoppedAnimation(KC.acento),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(_formatarTempo(tempoMs), style: KT.caption()),
+        ],
+      ),
+    );
+  }
+
+  static String _formatarTempo(int ms) {
+    final totalSeg = ms ~/ 1000;
+    final m = (totalSeg ~/ 60).toString().padLeft(1, '0');
+    final s = (totalSeg % 60).toString().padLeft(2, '0');
+    return '$m:$s';
   }
 }
 
@@ -386,7 +855,7 @@ class _EnsoCarregando extends CustomPainter {
   bool shouldRepaint(_EnsoCarregando old) => old.progresso != progresso;
 }
 
-// ── BOLHA DE MENSAGEM (sem balão — só texto) ─────────────────────────────────
+// ── BOLHA DE MENSAGEM (sem balão — só texto; voz ganha player) ───────────────
 
 class _BolhaMensagem extends StatelessWidget {
   final _Mensagem mensagem;
@@ -418,10 +887,38 @@ class _BolhaMensagem extends StatelessWidget {
         alignment: Alignment.centerRight,
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: largura * 0.70),
-          child: Text(
-            mensagem.texto,
-            style: KT.body(),
-            textAlign: TextAlign.right,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (mensagem.temAudio)
+                _PlayerAudio(
+                  key: ValueKey(
+                    mensagem.audioPathLocal ?? mensagem.audioPathRemoto,
+                  ),
+                  caminhoLocal: mensagem.audioPathLocal,
+                  caminhoRemoto: mensagem.audioPathRemoto,
+                  duracaoMs: mensagem.audioDuracaoMs,
+                ),
+              if (mensagem.transcrevendo)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    T.mentorTranscrevendo,
+                    style: KT.caption(),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+              if (!mensagem.transcrevendo && mensagem.texto.trim().isNotEmpty)
+                Padding(
+                  padding: EdgeInsets.only(top: mensagem.temAudio ? 8 : 0),
+                  child: Text(
+                    mensagem.texto,
+                    style: KT.body(),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+            ],
           ),
         ),
       ),
@@ -476,7 +973,21 @@ class _TextoAnimadoState extends State<_TextoAnimado>
 // ── MODELO DE MENSAGEM ───────────────────────────────────────────────────────
 
 class _Mensagem {
-  final String texto;
+  String texto;
   final bool doMentor;
-  const _Mensagem({required this.texto, required this.doMentor});
+  final String? audioPathLocal; // arquivo local recém-gravado
+  String? audioPathRemoto; // caminho no bucket audios-mentor
+  final int? audioDuracaoMs;
+  bool transcrevendo;
+
+  _Mensagem({
+    required this.texto,
+    required this.doMentor,
+    this.audioPathLocal,
+    this.audioPathRemoto,
+    this.audioDuracaoMs,
+    this.transcrevendo = false,
+  });
+
+  bool get temAudio => audioPathLocal != null || audioPathRemoto != null;
 }

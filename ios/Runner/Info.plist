@@ -4,6 +4,9 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<!-- Mensagem de voz pro Mentor: gravação do microfone (pacote record) -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>O Kairo usa o microfone para você enviar mensagens de voz ao Mentor.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

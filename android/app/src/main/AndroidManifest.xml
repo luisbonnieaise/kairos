@@ -20,6 +20,8 @@
         android:maxSdkVersion="28"/>
     <!-- image_picker: acesso à câmera -->
     <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- Mensagem de voz pro Mentor (pacote record): gravação do microfone -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <application
         android:label="Kairo"
         android:name="${applicationName}"

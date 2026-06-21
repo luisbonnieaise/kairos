@@ -198,9 +198,14 @@ class BancoMensagens {
     return lista.reversed.toList();
   }
 
+  /// Salva uma mensagem. Para mensagens de voz, passe [audioPath] (caminho no
+  /// bucket privado audios-mentor) e [audioDuracaoMs]; o [conteudo] recebe a
+  /// transcrição. Mensagens de texto deixam ambos nulos.
   static Future<void> salvar({
     required String role,
     required String conteudo,
+    String? audioPath,
+    int? audioDuracaoMs,
   }) async {
     final user = supabase.auth.currentUser;
     if (user == null) return;
@@ -209,6 +214,8 @@ class BancoMensagens {
       'user_id': user.id,
       'role': role,
       'conteudo': conteudo,
+      if (audioPath != null) 'audio_path': audioPath,
+      if (audioDuracaoMs != null) 'audio_duracao_ms': audioDuracaoMs,
     });
   }
 

@@ -512,6 +512,44 @@ class T {
     'Etwas ging verloren. Versuche es gleich erneut.',
   );
 
+  // ── MENTOR (MENSAGEM DE VOZ) ───────────────────────────────────────────────
+  static String get mentorTranscrevendo => _g(
+    'Transcrevendo...',
+    'Transcribing...',
+    'Transcribiendo...',
+    'Wird transkribiert...',
+  );
+  static String get mentorAudioCurto => _g(
+    'Áudio muito curto',
+    'Audio too short',
+    'Audio demasiado corto',
+    'Aufnahme zu kurz',
+  );
+  static String get mentorAudioVazio => _g(
+    'Não consegui entender. Fale um pouco mais perto.',
+    "I couldn't understand. Speak a bit closer.",
+    'No pude entender. Habla un poco más cerca.',
+    'Ich konnte nichts verstehen. Sprich etwas näher.',
+  );
+  static String get mentorMicNegado => _g(
+    'Permita o acesso ao microfone para enviar voz.',
+    'Allow microphone access to send voice.',
+    'Permite el acceso al micrófono para enviar voz.',
+    'Erlaube den Mikrofonzugriff, um Sprache zu senden.',
+  );
+  static String get mentorAudioErro => _g(
+    'Não consegui transcrever seu áudio. Tente novamente.',
+    "I couldn't transcribe your audio. Try again.",
+    'No pude transcribir tu audio. Inténtalo de nuevo.',
+    'Ich konnte deine Aufnahme nicht transkribieren. Versuche es erneut.',
+  );
+  static String get mentorAudioLimite => _g(
+    'Você atingiu o limite de áudios por ora. Tente mais tarde.',
+    "You've reached the audio limit for now. Try again later.",
+    'Has alcanzado el límite de audios por ahora. Inténtalo más tarde.',
+    'Du hast das Audiolimit vorerst erreicht. Versuche es später.',
+  );
+
   // ── DOJÔ (PRÁTICAS) ────────────────────────────────────────────────────────
   static String get dojo => _g('Dôjo', 'Dojo', 'Dojo', 'Dojo');
   static String dojoNPraticasAtivas(int n) {
