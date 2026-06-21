@@ -85,6 +85,30 @@ class T {
   // ── AUTENTICAÇÃO ───────────────────────────────────────────────────────────
   static String get criarConta => _g('Criar conta', 'Create account', 'Crear cuenta', 'Konto erstellen');
   static String get entrar     => _g('Entrar', 'Sign in', 'Iniciar sesión', 'Anmelden');
+  static String get authSubtituloEntrar => _g(
+    'Continue de onde parou.',
+    'Pick up where you left off.',
+    'Continúa donde lo dejaste.',
+    'Mach dort weiter, wo du aufgehört hast.',
+  );
+  static String get authSubtituloCadastro => _g(
+    'Comece sua prática.',
+    'Begin your practice.',
+    'Comienza tu práctica.',
+    'Beginne deine Praxis.',
+  );
+  static String get mostrarSenha => _g(
+    'Mostrar senha',
+    'Show password',
+    'Mostrar contraseña',
+    'Passwort anzeigen',
+  );
+  static String get ocultarSenha => _g(
+    'Ocultar senha',
+    'Hide password',
+    'Ocultar contraseña',
+    'Passwort verbergen',
+  );
   static String get comoTeChamar => _g(
     'COMO PODEMOS TE CHAMAR',
     'WHAT SHOULD WE CALL YOU',
@@ -173,11 +197,17 @@ class T {
   );
 
   // Confirmação de e-mail (signup com confirmation ligada)
-  static String get confirmeSeuEmail => _g(
-    'CONFIRME SEU E-MAIL',
-    'CONFIRM YOUR EMAIL',
-    'CONFIRMA TU CORREO',
-    'BESTÄTIGE DEINE E-MAIL',
+  static String get confirmeSeuEmailTitulo => _g(
+    'Confirme seu e-mail',
+    'Confirm your email',
+    'Confirma tu correo',
+    'Bestätige deine E-Mail',
+  );
+  static String get confirmeSeuEmailSub => _g(
+    'Falta um passo.',
+    'One step to go.',
+    'Falta un paso.',
+    'Nur noch ein Schritt.',
   );
   static String get enviamosConfirmacao => _g(
     'Enviamos um link de confirmação para o seu e-mail. Toque no link para ativar a sua conta e depois faça login.',
@@ -211,6 +241,12 @@ class T {
   );
 
   // Recuperar senha
+  static String get recuperarSenhaEyebrow => _g(
+    'RECUPERAÇÃO',
+    'RECOVERY',
+    'RECUPERACIÓN',
+    'WIEDERHERSTELLUNG',
+  );
   static String get recuperarSenha => _g(
     'Recuperar senha',
     'Recover password',
@@ -251,7 +287,7 @@ class T {
   static String get salvar => _g('Salvar', 'Save', 'Guardar', 'Speichern');
   static String get salvando => _g('Salvando...', 'Saving...', 'Guardando...', 'Speichern...');
 
-  // ── KAIRO PREMIUM (Fase 03 — Stripe) ───────────────────────────────────────
+  // ── KAIRO PREMIUM (IAP — StoreKit / Play Billing) ──────────────────────────
   static String get premiumTitulo => _g(
     'Kairo Premium',
     'Kairo Premium',
@@ -265,10 +301,10 @@ class T {
     'Ein tieferer Mentor, garantierter Wochenbrief, erweiterte Grenzen.',
   );
   static String get premiumBeneficioMentor => _g(
-    'Mentor mais profundo e perspicaz.',
-    'A deeper, more insightful Mentor.',
-    'Un Mentor más profundo y perspicaz.',
-    'Ein tieferer, scharfsinnigerer Mentor.',
+    'Mentor em sua forma mais profunda e sábia.',
+    'The Mentor at its deepest and wisest.',
+    'El Mentor en su forma más profunda y sabia.',
+    'Der Mentor in seiner tiefsten und weisesten Form.',
   );
   static String get premiumBeneficioCarta => _g(
     'Carta semanal garantida, mesmo em semanas cheias.',
@@ -306,29 +342,17 @@ class T {
     'Activo hasta',
     'Aktiv bis',
   );
-  static String get premiumRetornoSucesso => _g(
-    'Assinatura confirmada. Bem-vindo ao Premium.',
-    'Subscription confirmed. Welcome to Premium.',
-    'Suscripción confirmada. Bienvenido a Premium.',
-    'Abo bestätigt. Willkommen bei Premium.',
+  static String get premiumCompraSucesso => _g(
+    'Assinatura ativada. Bem-vindo ao Premium.',
+    'Subscription activated. Welcome to Premium.',
+    'Suscripción activada. Bienvenido a Premium.',
+    'Abo aktiviert. Willkommen bei Premium.',
   );
-  static String get premiumRetornoCancelado => _g(
-    'Você cancelou. Pode voltar a assinar quando quiser.',
-    'You canceled. You can subscribe again anytime.',
-    'Cancelaste. Puedes volver a suscribirte cuando quieras.',
-    'Du hast abgebrochen. Du kannst jederzeit erneut abonnieren.',
-  );
-  static String get premiumGerenciarStripe => _g(
-    'Gerenciar/cancelar pelo recibo da Stripe enviado por e-mail.',
-    'Manage/cancel via the Stripe receipt sent by email.',
-    'Gestiona/cancela desde el recibo de Stripe enviado por correo.',
-    'Verwalten/kündigen über die per E-Mail gesendete Stripe-Quittung.',
-  );
-  static String get assinaturaErro => _g(
-    'Não foi possível concluir a compra. Tente novamente.',
-    'Could not complete the purchase. Try again.',
-    'No se pudo completar la compra. Inténtalo de nuevo.',
-    'Kauf konnte nicht abgeschlossen werden. Versuche es erneut.',
+  static String get premiumCompraCancelada => _g(
+    'Compra cancelada. Você pode assinar quando quiser.',
+    'Purchase canceled. You can subscribe anytime.',
+    'Compra cancelada. Puedes suscribirte cuando quieras.',
+    'Kauf abgebrochen. Du kannst jederzeit abonnieren.',
   );
   static String get premiumRestaurar => _g(
     'Restaurar compras',
@@ -342,11 +366,41 @@ class T {
     'Compras restauradas.',
     'Käufe wiederhergestellt.',
   );
-  static String get premiumCompraCancelada => _g(
-    'Compra cancelada.',
-    'Purchase canceled.',
-    'Compra cancelada.',
-    'Kauf abgebrochen.',
+  static String get premiumJaCompreiWeb => _g(
+    'Já comprei na web',
+    'I already paid on the web',
+    'Ya pagué en la web',
+    'Ich habe bereits im Web bezahlt',
+  );
+  static String get premiumNadaRestaurar => _g(
+    'Nenhuma assinatura encontrada para restaurar nesta conta.',
+    'No subscription found to restore on this account.',
+    'No se encontró ninguna suscripción para restaurar en esta cuenta.',
+    'Kein Abo zum Wiederherstellen auf diesem Konto gefunden.',
+  );
+  static String get premiumSemProdutos => _g(
+    'Não foi possível carregar os planos agora. Tente novamente em instantes.',
+    'Could not load the plans right now. Please try again shortly.',
+    'No se pudieron cargar los planes ahora. Inténtalo de nuevo en unos instantes.',
+    'Die Pläne konnten gerade nicht geladen werden. Bitte versuche es gleich erneut.',
+  );
+  static String get premiumTentarNovamente => _g(
+    'Tentar novamente',
+    'Try again',
+    'Intentar de nuevo',
+    'Erneut versuchen',
+  );
+  static String get premiumTermosRenovacao => _g(
+    'Novos assinantes ganham 7 dias grátis. Depois, a assinatura renova automaticamente pelo preço exibido até você cancelar nos Ajustes do dispositivo.',
+    'New subscribers get 7 days free. After that, the subscription renews automatically at the displayed price until you cancel in your device settings.',
+    'Los nuevos suscriptores obtienen 7 días gratis. Después, la suscripción se renueva automáticamente al precio mostrado hasta que canceles en los ajustes del dispositivo.',
+    'Neue Abonnenten erhalten 7 Tage gratis. Danach verlängert sich das Abo automatisch zum angezeigten Preis, bis du in den Geräteeinstellungen kündigst.',
+  );
+  static String get assinaturaErro => _g(
+    'Não foi possível concluir a compra. Tente novamente.',
+    'Could not complete the purchase. Try again.',
+    'No se pudo completar la compra. Inténtalo de nuevo.',
+    'Kauf konnte nicht abgeschlossen werden. Versuche es erneut.',
   );
   static String get premiumIndisponivel => _g(
     'A loja está indisponível agora. Tente novamente mais tarde.',
@@ -360,6 +414,73 @@ class T {
     'Gestiona tu suscripción en los ajustes de la tienda.',
     'Verwalte dein Abo in den Store-Einstellungen.',
   );
+
+  // ── PORTÃO DE ASSINATURA (hard paywall na entrada) ──────────────────────────
+  static String get portaoTitulo => _g(
+    'Comece sua jornada',
+    'Begin your journey',
+    'Comienza tu viaje',
+    'Beginne deine Reise',
+  );
+  static String get portaoChamada => _g(
+    'O Kairo é uma prática diária de evolução. Experimente 7 dias grátis.',
+    'Kairo is a daily practice of growth. Try it free for 7 days.',
+    'Kairo es una práctica diaria de evolución. Pruébalo gratis 7 días.',
+    'Kairo ist eine tägliche Praxis der Entwicklung. 7 Tage gratis testen.',
+  );
+  static String get portaoComecarTeste => _g(
+    'Começar teste grátis',
+    'Start free trial',
+    'Comenzar prueba gratis',
+    'Gratis-Test starten',
+  );
+  // Divulgação exigida pela Apple (Guideline 3.1.2) e Google. O preço/período
+  // de cada plano aparece no respectivo cartão (dados da loja).
+  static String get portaoRenovacao => _g(
+    'O teste dura 7 dias. Depois, a assinatura renova automaticamente pelo preço do plano até você cancelar nas configurações da loja. Cancele quando quiser.',
+    'The trial lasts 7 days. After that, the subscription renews automatically at the plan price until you cancel in your store settings. Cancel anytime.',
+    'La prueba dura 7 días. Después, la suscripción se renueva automáticamente al precio del plan hasta que canceles en los ajustes de la tienda. Cancela cuando quieras.',
+    'Der Test dauert 7 Tage. Danach verlängert sich das Abo automatisch zum Planpreis, bis du in den Store-Einstellungen kündigst. Jederzeit kündbar.',
+  );
+  static String get portaoTesteBadge => _g(
+    '7 dias grátis',
+    '7 days free',
+    '7 días gratis',
+    '7 Tage gratis',
+  );
+  static String get portaoMelhorValor => _g(
+    'Melhor valor',
+    'Best value',
+    'Mejor valor',
+    'Bester Wert',
+  );
+  static String portaoEconomizar(int pct) => _g(
+    'Economize $pct%',
+    'Save $pct%',
+    'Ahorra $pct%',
+    'Spare $pct%',
+  );
+  static String get portaoAoAssinar => _g(
+    'Ao assinar, você concorda com os',
+    'By subscribing, you agree to the',
+    'Al suscribirte, aceptas los',
+    'Mit dem Abo akzeptierst du die',
+  );
+  static String get termosDeUso => _g(
+    'Termos de Uso',
+    'Terms of Use',
+    'Términos de Uso',
+    'Nutzungsbedingungen',
+  );
+  static String get politicaPrivacidade => _g(
+    'Política de Privacidade',
+    'Privacy Policy',
+    'Política de Privacidad',
+    'Datenschutzrichtlinie',
+  );
+  static String get conector_e => _g('e', 'and', 'y', 'und');
+  static String get periodoMes => _g('mês', 'month', 'mes', 'Monat');
+  static String get periodoAno => _g('ano', 'year', 'año', 'Jahr');
 
   // ── PÁTIO (INÍCIO) ─────────────────────────────────────────────────────────
   static String get mentorLabel => _g('MENTOR', 'MENTOR', 'MENTOR', 'MENTOR');

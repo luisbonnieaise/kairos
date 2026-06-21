@@ -16,7 +16,7 @@ import 'core/widget_sync.dart';
 import 'core/notificacoes.dart';
 import 'core/i18n.dart';
 import 'telas/auth.dart';
-import 'telas/home.dart';
+import 'telas/portao.dart';
 import 'telas/selecao_idioma.dart';
 
 void main() async {
@@ -27,6 +27,10 @@ void main() async {
     url: dotenv.env['SUPABASE_URL']!,
     anonKey: dotenv.env['SUPABASE_KEY']!,
   );
+
+  // Inicia o listener de compras IAP (purchaseStream) o quanto antes — compras
+  // pendentes/retomadas são entregues no boot.
+  Billing.instance.init();
 
   // Carrega o idioma salvo localmente (ou padrão pt)
   await T.carregarLocal();
@@ -42,10 +46,6 @@ void main() async {
 
   // Pré-carrega o som antes de mostrar a tela — elimina o crackling inicial
   KairoAudio.precarregar();
-
-  // Billing (Fase 07): inicia o listener do fluxo de compras IAP. Cada compra
-  // é verificada no servidor (verify-purchase) antes de refletir Premium.
-  Billing.instance.iniciar();
 
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
@@ -190,11 +190,13 @@ class _TelaSplashState extends State<TelaSplash>
 
       final logado = supabase.auth.currentSession != null;
 
-      // Se está logado, sincroniza o idioma do perfil e reagenda lembrete
+      // Se está logado, sincroniza o idioma do perfil e reagenda lembrete.
+      // Entra pelo PORTÃO de assinatura (hard paywall): ele decide se libera
+      // o TelaHome (entitlement ativo) ou exibe o paywall obrigatório.
       if (logado) {
         _sincronizarIdioma();
         _reagendarLembrete();
-        _irPara(const TelaHome());
+        _irPara(const TelaPortao());
         return;
       }
 

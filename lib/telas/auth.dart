@@ -6,7 +6,11 @@ import '../core/banco.dart';
 import '../core/i18n.dart';
 import '../main.dart';
 import 'onboarding.dart';
-import 'home.dart';
+import 'portao.dart';
+
+/// Regex de e-mail compartilhado entre a tela de auth e a folha de recuperação
+/// de senha — uma única fonte de verdade para a validação leve do campo.
+final RegExp _regexEmailAuth = RegExp(r'^[\w\.\-+]+@[\w\-]+(\.[\w\-]+)+$');
 
 class TelaAuth extends StatefulWidget {
   final bool ehCadastro;
@@ -20,6 +24,20 @@ class _TelaAuthState extends State<TelaAuth> {
   final _email = TextEditingController();
   final _senha = TextEditingController();
   final _senhaConfirma = TextEditingController();
+
+  // Ordem de foco: email → senha → confirmar. Vivem no State (não na subárvore
+  // trocada pelo AnimatedSwitcher), então sobrevivem ao toggle login↔cadastro.
+  final _fnEmail = FocusNode();
+  final _fnSenha = FocusNode();
+  final _fnConfirma = FocusNode();
+
+  // Modo da tela. Promovido a estado para que o toggle login↔cadastro seja
+  // in-place (setState), sem troca de rota / flash.
+  late bool _ehCadastro;
+
+  // Um único controle de visibilidade governa ambos os campos de senha.
+  bool _senhaVisivel = false;
+
   bool _carregando = false;
   String? _erro;
 
@@ -42,6 +60,16 @@ class _TelaAuthState extends State<TelaAuth> {
   bool _senhaForte(String s) =>
       s.length >= 8 && _regexLetra.hasMatch(s) && _regexNumero.hasMatch(s);
 
+  // Sinal positivo do campo de e-mail — um check cobre quando válido (nunca um
+  // X vermelho; a ausência do check é o único sinal negativo).
+  bool get _emailValido => _regexEmailAuth.hasMatch(_email.text.trim());
+
+  @override
+  void initState() {
+    super.initState();
+    _ehCadastro = widget.ehCadastro;
+  }
+
   Future<void> _autenticar() async {
     final email = _email.text.trim();
     final senha = _senha.text;
@@ -57,7 +85,7 @@ class _TelaAuthState extends State<TelaAuth> {
     }
 
     // Confirmação de senha só no cadastro
-    if (widget.ehCadastro && senha != _senhaConfirma.text) {
+    if (_ehCadastro && senha != _senhaConfirma.text) {
       setState(() => _erro = T.senhasNaoCoincidem);
       return;
     }
@@ -69,7 +97,7 @@ class _TelaAuthState extends State<TelaAuth> {
     });
 
     try {
-      if (widget.ehCadastro) {
+      if (_ehCadastro) {
         final resp = await supabase.auth.signUp(email: email, password: senha);
 
         // Supabase Auth com "Confirm email" LIGADO: signUp devolve user mas
@@ -96,8 +124,8 @@ class _TelaAuthState extends State<TelaAuth> {
         Navigator.pushReplacement(
           context,
           PageRouteBuilder(
-            pageBuilder: (_, __, ___) => const TelaOnboarding(),
-            transitionsBuilder: (_, anim, __, child) =>
+            pageBuilder: (_, _, _) => const TelaOnboarding(),
+            transitionsBuilder: (_, anim, _, child) =>
                 FadeTransition(opacity: anim, child: child),
             transitionDuration: const Duration(milliseconds: 600),
           ),
@@ -123,8 +151,9 @@ class _TelaAuthState extends State<TelaAuth> {
         Navigator.pushReplacement(
           context,
           PageRouteBuilder(
-            pageBuilder: (_, __, ___) => const TelaHome(),
-            transitionsBuilder: (_, anim, __, child) =>
+            // Entra pelo PORTÃO (hard paywall): libera TelaHome só com assinatura.
+            pageBuilder: (_, _, _) => const TelaPortao(),
+            transitionsBuilder: (_, anim, _, child) =>
                 FadeTransition(opacity: anim, child: child),
             transitionDuration: const Duration(milliseconds: 600),
           ),
@@ -229,307 +258,553 @@ class _TelaAuthState extends State<TelaAuth> {
     _email.dispose();
     _senha.dispose();
     _senhaConfirma.dispose();
+    _fnEmail.dispose();
+    _fnSenha.dispose();
+    _fnConfirma.dispose();
     super.dispose();
   }
 
-  // Sub-vista pós-signup quando "Confirm email" está LIGADO no Supabase Auth.
-  // Mesma linguagem visual de _SheetRecuperarSenha: titulo em KT.titulo(),
-  // corpo em bodySerif/caption, botão "voltar ao login" no estilo outlined.
-  Widget _construirAguardandoConfirmacao() {
+  // ── SHELL ROBUSTO A TECLADO ─────────────────────────────────────────────────
+  // SingleChildScrollView + ConstrainedBox(minHeight) + IntrinsicHeight permite
+  // que o `Spacer()` fixe o botão na base em telas altas E que a página role
+  // (em vez de estourar a RenderFlex) no cadastro com 3 campos + teclado + erro.
+  Widget _shell({required List<Widget> children}) {
     return Scaffold(
       backgroundColor: KC.sumi,
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 16),
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: Icon(Icons.arrow_back, color: KC.cinza, size: 22),
-                padding: EdgeInsets.zero,
-                alignment: Alignment.centerLeft,
-              ),
-              const SizedBox(height: 48),
-
-              Text(T.confirmeSeuEmail, style: KT.micro(cor: KC.kin)),
-              const SizedBox(height: 16),
-              Text(T.enviamosConfirmacao, style: KT.bodySerif()),
-              const SizedBox(height: 16),
-              if (_emailParaConfirmacao.isNotEmpty)
-                Text(_emailParaConfirmacao, style: KT.body(cor: KC.washi)),
-
-              if (_erro != null) ...[
-                const SizedBox(height: 24),
-                Text(_erro!, style: KT.caption(cor: KC.aka)),
-              ],
-
-              const Spacer(),
-
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _reenviando ? null : _reenviarConfirmacao,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: KC.washi,
-                    foregroundColor: KC.sumi,
-                    disabledBackgroundColor: KC.grafite,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              keyboardDismissBehavior:
+                  ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.fromLTRB(32, 8, 32, 32),
+              child: ConstrainedBox(
+                constraints:
+                    BoxConstraints(minHeight: constraints.maxHeight - 40),
+                child: IntrinsicHeight(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: children,
                   ),
-                  child: _reenviando
-                      ? SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 1.5,
-                            color: KC.fundo,
-                          ),
-                        )
-                      : Text(T.reenviarConfirmacao, style: KT.body(cor: KC.fundo)),
                 ),
               ),
-
-              const SizedBox(height: 12),
-
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () {
-                    // Volta ao login (modo cadastro -> modo login).
-                    Navigator.pushReplacement(
-                      context,
-                      PageRouteBuilder(
-                        pageBuilder: (_, __, ___) =>
-                            const TelaAuth(ehCadastro: false),
-                        transitionDuration: Duration.zero,
-                      ),
-                    );
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: KC.washi,
-                    side: BorderSide(color: KC.grafite, width: 1),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: Text(T.voltarAoLogin, style: KT.body()),
-                ),
-              ),
-
-              const SizedBox(height: 32),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    // Sub-vista "Confirme seu e-mail" — aparece após signup quando o
-    // Supabase Auth está com confirmação ligada (response.session == null).
-    if (_aguardandoConfirmacao) return _construirAguardandoConfirmacao();
+  Widget _botaoVoltar() {
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: IconButton(
+        padding: EdgeInsets.zero,
+        alignment: Alignment.centerLeft,
+        icon: Icon(Icons.arrow_back, color: KC.cinza, size: 22),
+        onPressed: () {
+          HapticFeedback.lightImpact();
+          Navigator.pop(context);
+        },
+      ),
+    );
+  }
 
-    final titulo = widget.ehCadastro ? T.criarConta : T.entrar;
-    final botao = widget.ehCadastro ? T.criarConta : T.entrar;
-    final linkOposto = widget.ehCadastro
-        ? T.jaTenhoConta
-        : T.criarNovaConta;
+  // Olho de mostrar/ocultar — o MESMO controle governa os dois campos de senha.
+  Widget _olhoSenha() {
+    return Semantics(
+      button: true,
+      excludeSemantics: true,
+      label: _senhaVisivel ? T.ocultarSenha : T.mostrarSenha,
+      child: IconButton(
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+        splashRadius: 22,
+        icon: Icon(
+          _senhaVisivel
+              ? Icons.visibility_off_outlined
+              : Icons.visibility_outlined,
+          size: 20,
+          color: KC.cinza,
+        ),
+        onPressed: () {
+          HapticFeedback.lightImpact();
+          setState(() => _senhaVisivel = !_senhaVisivel);
+        },
+      ),
+    );
+  }
 
-    return Scaffold(
-      backgroundColor: KC.sumi,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 16),
+  // ── SUB-VISTA: "CONFIRME SEU E-MAIL" ─────────────────────────────────────────
+  // Pós-signup quando "Confirm email" está LIGADO no Supabase Auth
+  // (response.session == null). Mesma gramática de cabeçalho das telas
+  // principais (ensō + título em degradê + subtítulo + divisor).
+  Widget _construirAguardandoConfirmacao() {
+    return _shell(
+      children: [
+        _botaoVoltar(),
+        const SizedBox(height: 24),
 
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: Icon(Icons.arrow_back, color: KC.cinza, size: 22),
-                padding: EdgeInsets.zero,
-                alignment: Alignment.centerLeft,
+        // Cabeçalho — escala de seção (KT.titulo) para diferenciar do título
+        // principal das telas de login/cadastro.
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            KairoEnso(
+              tamanho: 36,
+              cor: KC.acento.withValues(alpha: 0.75),
+              duracao: const Duration(seconds: 12),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: KT.tituloGradiente(
+                T.confirmeSeuEmailTitulo,
+                estilo: KT.titulo(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(T.confirmeSeuEmailSub, style: KT.caption()),
+        const SizedBox(height: 32),
+        KT.divisor(),
+        const SizedBox(height: 32),
 
-              const SizedBox(height: 32),
+        Text(T.enviamosConfirmacao, style: KT.bodySerif()),
+        const SizedBox(height: 16),
 
-              Text(titulo, style: KT.displayL()),
-              const SizedBox(height: 48),
-
-              // Email
-              Text(T.email, style: KT.micro()),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _email,
-                keyboardType: TextInputType.emailAddress,
-                style: KT.body(),
-                cursorColor: KC.kin,
-                cursorWidth: 1,
-                decoration: InputDecoration(
-                  border: UnderlineInputBorder(
-                    borderSide: BorderSide(color: KC.grafite, width: 1),
-                  ),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: KC.grafite, width: 1),
-                  ),
-                  focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: KC.cinza, width: 1),
-                  ),
-                  contentPadding: EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
-
-              const SizedBox(height: 32),
-
-              // Senha
-              Text(T.senha, style: KT.micro()),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _senha,
-                obscureText: true,
-                style: KT.body(),
-                cursorColor: KC.kin,
-                cursorWidth: 1,
-                decoration: InputDecoration(
-                  border: UnderlineInputBorder(
-                    borderSide: BorderSide(color: KC.grafite, width: 1),
-                  ),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: KC.grafite, width: 1),
-                  ),
-                  focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: KC.cinza, width: 1),
-                  ),
-                  contentPadding: EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
-
-              if (widget.ehCadastro) ...[
-                const SizedBox(height: 32),
-                Text(T.confirmarSenha, style: KT.micro()),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _senhaConfirma,
-                  obscureText: true,
-                  style: KT.body(),
-                  cursorColor: KC.kin,
-                  cursorWidth: 1,
-                  decoration: InputDecoration(
-                    border: UnderlineInputBorder(
-                      borderSide: BorderSide(color: KC.grafite, width: 1),
-                    ),
-                    enabledBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: KC.grafite, width: 1),
-                    ),
-                    focusedBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: KC.cinza, width: 1),
-                    ),
-                    contentPadding: EdgeInsets.symmetric(vertical: 12),
+        // O e-mail vira um dado destacado num cartão (linguagem de card do app).
+        if (_emailParaConfirmacao.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: KC.card,
+              borderRadius: BorderRadius.circular(12),
+              border: KC.escuro ? null : Border.all(color: KC.linha, width: 1),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.mail_outline, size: 18, color: KC.kin),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _emailParaConfirmacao,
+                    style: KT.body(cor: KC.washi),
                   ),
                 ),
               ],
+            ),
+          ),
 
-              if (_erro != null) ...[
-                const SizedBox(height: 24),
-                Text(_erro!, style: KT.caption(cor: KC.aka)),
-              ],
+        // Erro / confirmação reenviada
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: _erro != null
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 24),
+                  child: Text(_erro!, style: KT.caption(cor: KC.aka)),
+                )
+              : const SizedBox.shrink(),
+        ),
 
-              // Login bloqueado por e-mail não confirmado: ação de reenvio
-              // do link. Aparece junto da mensagem de erro acima.
-              if (_podeReenviarConfirmacao && !widget.ehCadastro) ...[
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton(
-                    onPressed: _reenviando ? null : _reenviarConfirmacao,
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: Text(
-                      _reenviando ? T.salvando : T.reenviarConfirmacao,
-                      style: KT.caption(cor: KC.kin),
-                    ),
-                  ),
-                ),
-              ],
+        const Spacer(),
+        const SizedBox(height: 24),
 
-              if (!widget.ehCadastro) ...[
-                const SizedBox(height: 24),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton(
-                    onPressed: _esqueciSenha,
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: Text(T.esqueciSenha, style: KT.caption(cor: KC.kin)),
-                  ),
-                ),
-              ],
-
-              const Spacer(),
-
-              // Botão principal
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _carregando ? null : _autenticar,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: KC.washi,
-                    foregroundColor: KC.sumi,
-                    disabledBackgroundColor: KC.grafite,
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: _carregando
-                      ? SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 1.5,
-                            color: KC.fundo,
-                          ),
-                        )
-                      : Text(botao, style: KT.body(cor: KC.fundo)),
-                ),
+        // Reenviar confirmação
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _reenviando ? null : _reenviarConfirmacao,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: KC.washi,
+              foregroundColor: KC.sumi,
+              disabledBackgroundColor: KC.grafite,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
               ),
-
-              const SizedBox(height: 16),
-
-              Center(
-                child: TextButton(
-                  onPressed: () {
-                    HapticFeedback.lightImpact();
-                    Navigator.pushReplacement(
-                      context,
-                      PageRouteBuilder(
-                        pageBuilder: (_, __, ___) => TelaAuth(ehCadastro: !widget.ehCadastro),
-                        transitionDuration: Duration.zero,
+            ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: _reenviando
+                  ? SizedBox(
+                      key: const ValueKey('load'),
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.5,
+                        color: KC.fundo,
                       ),
-                    );
-                  },
-                  child: Text(linkOposto, style: KT.caption()),
-                ),
-              ),
-
-              const SizedBox(height: 32),
-            ],
+                    )
+                  : Text(
+                      T.reenviarConfirmacao,
+                      key: const ValueKey('label'),
+                      style: KT.body(cor: KC.fundo),
+                    ),
+            ),
           ),
         ),
-      ),
+
+        const SizedBox(height: 12),
+
+        // Voltar ao login — in-place (sem flash de rota).
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              setState(() {
+                _aguardandoConfirmacao = false;
+                _ehCadastro = false;
+                _erro = null;
+                _senhaConfirma.clear();
+              });
+            },
+            style: OutlinedButton.styleFrom(
+              foregroundColor: KC.washi,
+              side: BorderSide(color: KC.grafite, width: 1),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: Text(T.voltarAoLogin, style: KT.body()),
+          ),
+        ),
+
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Sub-vista "Confirme seu e-mail".
+    if (_aguardandoConfirmacao) return _construirAguardandoConfirmacao();
+
+    return _shell(
+      children: [
+        _botaoVoltar(),
+        const SizedBox(height: 24),
+
+        // ── Cabeçalho canônico: ensō + título em degradê + subtítulo + divisor ──
+        // Não envolto em widget animado: o ensō gira continuamente como âncora
+        // de marca e só o texto do título/subtítulo troca via setState.
+        _AuthHeader(
+          titulo: _ehCadastro ? T.criarConta : T.entrar,
+          subtitulo:
+              _ehCadastro ? T.authSubtituloCadastro : T.authSubtituloEntrar,
+        ),
+        const SizedBox(height: 32),
+
+        // Email
+        _AuthField(
+          controller: _email,
+          label: T.email,
+          keyboardType: TextInputType.emailAddress,
+          focusNode: _fnEmail,
+          action: TextInputAction.next,
+          onSubmitted: (_) => _fnSenha.requestFocus(),
+          validaListenable: _email,
+          validador: () => _emailValido,
+        ),
+        const SizedBox(height: 28),
+
+        // Senha
+        _AuthField(
+          controller: _senha,
+          label: T.senha,
+          focusNode: _fnSenha,
+          obscure: !_senhaVisivel,
+          suffix: _olhoSenha(),
+          action:
+              _ehCadastro ? TextInputAction.next : TextInputAction.done,
+          onSubmitted: _ehCadastro
+              ? (_) => _fnConfirma.requestFocus()
+              : (_) => _autenticar(),
+        ),
+
+        // Confirmar senha (somente cadastro) — surge/recolhe suavemente.
+        AnimatedSize(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeInOut,
+          alignment: Alignment.topCenter,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            transitionBuilder: (child, anim) =>
+                FadeTransition(opacity: anim, child: child),
+            child: _ehCadastro
+                ? Column(
+                    key: const ValueKey('confirma'),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 28),
+                      _AuthField(
+                        controller: _senhaConfirma,
+                        label: T.confirmarSenha,
+                        focusNode: _fnConfirma,
+                        obscure: !_senhaVisivel,
+                        suffix: _olhoSenha(),
+                        action: TextInputAction.done,
+                        onSubmitted: (_) => _autenticar(),
+                      ),
+                    ],
+                  )
+                : const SizedBox.shrink(key: ValueKey('vazio')),
+          ),
+        ),
+
+        // Erro
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: _erro != null
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 24),
+                  child: Text(_erro!, style: KT.caption(cor: KC.aka)),
+                )
+              : const SizedBox.shrink(),
+        ),
+
+        // Login bloqueado por e-mail não confirmado: ação de reenvio do link.
+        if (_podeReenviarConfirmacao && !_ehCadastro) ...[
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: _reenviando ? null : _reenviarConfirmacao,
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                minimumSize: const Size(0, 44),
+              ),
+              child: Text(
+                _reenviando ? T.salvando : T.reenviarConfirmacao,
+                style: KT.caption(cor: KC.kin),
+              ),
+            ),
+          ),
+        ],
+
+        // Esqueci minha senha (somente login).
+        if (!_ehCadastro) ...[
+          const SizedBox(height: 24),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: _esqueciSenha,
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                minimumSize: const Size(0, 44),
+              ),
+              child: Text(T.esqueciSenha, style: KT.caption(cor: KC.kin)),
+            ),
+          ),
+        ],
+
+        const Spacer(),
+        const SizedBox(height: 24),
+
+        // Botão principal
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _carregando ? null : _autenticar,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: KC.washi,
+              foregroundColor: KC.sumi,
+              disabledBackgroundColor: KC.grafite,
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: _carregando
+                  ? SizedBox(
+                      key: const ValueKey('load'),
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.5,
+                        color: KC.fundo,
+                      ),
+                    )
+                  : Text(
+                      _ehCadastro ? T.criarConta : T.entrar,
+                      key: const ValueKey('label'),
+                      style: KT.body(cor: KC.fundo),
+                    ),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Alternar login ↔ cadastro — in-place, com cross-fade do texto.
+        Center(
+          child: TextButton(
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              setState(() {
+                _ehCadastro = !_ehCadastro;
+                _erro = null;
+                _podeReenviarConfirmacao = false;
+                _senhaConfirma.clear();
+                _senhaVisivel = false;
+              });
+            },
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              child: Text(
+                _ehCadastro ? T.jaTenhoConta : T.criarNovaConta,
+                key: ValueKey(_ehCadastro),
+                style: KT.caption(),
+              ),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+}
+
+// ── CABEÇALHO DE AUTENTICAÇÃO ─────────────────────────────────────────────────
+// Réplica da gramática de cabeçalho das telas Mentor / Dôjo: ensō + título em
+// degradê de cobre + subtítulo + divisor. É o que faz login/cadastro lerem como
+// telas de primeira classe do app.
+
+class _AuthHeader extends StatelessWidget {
+  final String titulo;
+  final String subtitulo;
+
+  const _AuthHeader({required this.titulo, required this.subtitulo});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            KairoEnso(
+              tamanho: 36,
+              cor: KC.acento.withValues(alpha: 0.75),
+              duracao: const Duration(seconds: 12),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: KT.tituloGradiente(
+                titulo,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(subtitulo, style: KT.caption()),
+        const SizedBox(height: 32),
+        KT.divisor(),
+      ],
+    );
+  }
+}
+
+// ── CAMPO DE AUTENTICAÇÃO ─────────────────────────────────────────────────────
+// Tratamento único de campo (rótulo micro em maiúsculas + TextField sublinhado)
+// usado em login, cadastro, confirme-seu-email e na folha de recuperação — para
+// que nunca divirjam. Quando `validador` é fornecido, um check cobre aparece no
+// slot do sufixo (sinal positivo apenas) e é recomputado de forma reativa via
+// ListenableBuilder — sem rebuild da tela inteira.
+
+class _AuthField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final TextInputType? keyboardType;
+  final bool obscure;
+  final Widget? suffix;
+  final FocusNode? focusNode;
+  final TextInputAction action;
+  final ValueChanged<String>? onSubmitted;
+  final bool autofocus;
+  final Listenable? validaListenable;
+  final bool Function()? validador;
+
+  const _AuthField({
+    required this.controller,
+    required this.label,
+    this.keyboardType,
+    this.obscure = false,
+    this.suffix,
+    this.focusNode,
+    this.action = TextInputAction.next,
+    this.onSubmitted,
+    this.autofocus = false,
+    this.validaListenable,
+    this.validador,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: KT.micro()),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          focusNode: focusNode,
+          keyboardType: keyboardType,
+          obscureText: obscure,
+          autofocus: autofocus,
+          style: KT.body(),
+          cursorColor: KC.kin,
+          cursorWidth: 1,
+          textInputAction: action,
+          onSubmitted: onSubmitted,
+          decoration: InputDecoration(
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(vertical: 12),
+            border: UnderlineInputBorder(
+              borderSide: BorderSide(color: KC.grafite, width: 1),
+            ),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: KC.grafite, width: 1),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: KC.cinza, width: 1),
+            ),
+            suffixIcon: suffix ??
+                ((validador != null && validaListenable != null)
+                    ? ListenableBuilder(
+                        listenable: validaListenable!,
+                        builder: (_, _) => validador!()
+                            ? Icon(Icons.check, size: 18, color: KC.kin)
+                            : const SizedBox.shrink(),
+                      )
+                    : null),
+            suffixIconConstraints:
+                const BoxConstraints(minWidth: 0, minHeight: 0),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -556,13 +831,10 @@ class _SheetRecuperarSenhaState extends State<_SheetRecuperarSenha> {
     _email = TextEditingController(text: widget.emailInicial);
   }
 
-  // Regex simples mas robusto para email
-  static final _regexEmail = RegExp(r'^[\w\.\-+]+@[\w\-]+(\.[\w\-]+)+$');
-
   Future<void> _enviar() async {
     final email = _email.text.trim();
 
-    if (email.isEmpty || !_regexEmail.hasMatch(email)) {
+    if (email.isEmpty || !_regexEmailAuth.hasMatch(email)) {
       setState(() => _erro = T.digiteEmailValido);
       return;
     }
@@ -620,89 +892,119 @@ class _SheetRecuperarSenhaState extends State<_SheetRecuperarSenha> {
             ),
             const SizedBox(height: 32),
 
-            if (_enviado) ...[
-              Text(T.verifiqueEmail, style: KT.micro(cor: KC.kin)),
-              const SizedBox(height: 12),
-              Text(T.linkEnviado, style: KT.bodySerif()),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: KC.washi,
-                    side: BorderSide(color: KC.grafite, width: 1),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: Text(T.fechar, style: KT.body()),
-                ),
-              ),
-            ] else ...[
-              Text(T.recuperarSenha, style: KT.titulo()),
-              const SizedBox(height: 8),
-              Text(T.enviaremosLink, style: KT.caption()),
-              const SizedBox(height: 32),
-
-              Text(T.email, style: KT.micro()),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _email,
-                keyboardType: TextInputType.emailAddress,
-                style: KT.body(),
-                cursorColor: KC.kin,
-                cursorWidth: 1,
-                autofocus: widget.emailInicial.isEmpty,
-                decoration: InputDecoration(
-                  border: UnderlineInputBorder(
-                    borderSide: BorderSide(color: KC.grafite, width: 1),
-                  ),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: KC.grafite, width: 1),
-                  ),
-                  focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: KC.cinza, width: 1),
-                  ),
-                  contentPadding: EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
-
-              if (_erro != null) ...[
-                const SizedBox(height: 16),
-                Text(_erro!, style: KT.caption(cor: KC.aka)),
-              ],
-
-              const SizedBox(height: 32),
-
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _enviando ? null : _enviar,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: KC.washi,
-                    foregroundColor: KC.sumi,
-                    disabledBackgroundColor: KC.grafite,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: _enviando
-                      ? SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 1.5,
-                            color: KC.fundo,
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              transitionBuilder: (child, anim) =>
+                  FadeTransition(opacity: anim, child: child),
+              child: _enviado
+                  ? Column(
+                      key: const ValueKey('enviado'),
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.check, size: 18, color: KC.kin),
+                            const SizedBox(width: 8),
+                            Text(T.verifiqueEmail, style: KT.micro(cor: KC.kin)),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(T.linkEnviado, style: KT.bodySerif()),
+                        const SizedBox(height: 32),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: KC.washi,
+                              side: BorderSide(color: KC.grafite, width: 1),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: Text(T.fechar, style: KT.body()),
                           ),
-                        )
-                      : Text(T.enviarLink, style: KT.body(cor: KC.fundo)),
-                ),
-              ),
-            ],
+                        ),
+                      ],
+                    )
+                  : Column(
+                      key: const ValueKey('form'),
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(T.recuperarSenhaEyebrow,
+                            style: KT.micro(cor: KC.kin)),
+                        const SizedBox(height: 8),
+                        Text(T.recuperarSenha, style: KT.titulo()),
+                        const SizedBox(height: 8),
+                        Text(T.enviaremosLink, style: KT.caption()),
+                        const SizedBox(height: 32),
+
+                        _AuthField(
+                          controller: _email,
+                          label: T.email,
+                          keyboardType: TextInputType.emailAddress,
+                          action: TextInputAction.done,
+                          onSubmitted: (_) => _enviar(),
+                          autofocus: widget.emailInicial.isEmpty,
+                        ),
+
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOut,
+                          alignment: Alignment.topCenter,
+                          child: _erro != null
+                              ? Padding(
+                                  padding: const EdgeInsets.only(top: 16),
+                                  child: Text(_erro!,
+                                      style: KT.caption(cor: KC.aka)),
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+
+                        const SizedBox(height: 32),
+
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _enviando ? null : _enviar,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: KC.washi,
+                              foregroundColor: KC.sumi,
+                              disabledBackgroundColor: KC.grafite,
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 16),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              child: _enviando
+                                  ? SizedBox(
+                                      key: const ValueKey('load'),
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 1.5,
+                                        color: KC.fundo,
+                                      ),
+                                    )
+                                  : Text(
+                                      T.enviarLink,
+                                      key: const ValueKey('label'),
+                                      style: KT.body(cor: KC.fundo),
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
           ],
         ),
       ),

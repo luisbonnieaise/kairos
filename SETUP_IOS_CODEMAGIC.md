@@ -1,7 +1,7 @@
 # Build iOS (IPA) via Codemagic → TestFlight
 
 Projeto já preparado:
-- Bundle ID: **`com.thekairo.app`** (igual ao registrado na App Store Connect e ao backend)
+- Bundle ID: **`com.thekairo.app`** (igual ao registrado na App Store Connect e ao backend; antes era `com.example.kairo`)
 - `codemagic.yaml` criado (workflow `ios-testflight`)
 - `.env` é recriado no build (não vai pro git — contém a chave Supabase)
 

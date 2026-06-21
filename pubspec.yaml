@@ -45,13 +45,14 @@ dependencies:
   shared_preferences: ^2.3.4
   flutter_timezone: ^4.1.0
   image_picker: ^1.1.2
-  url_launcher: ^6.3.0
   app_links: ^6.3.2
   flutter_foreground_task: ^9.2.2
   # Compra in-app (StoreKit 2 / Play Billing) — Kairo Premium IAP (Fase 07).
-  in_app_purchase: ^3.2.0
+  in_app_purchase: ^3.3.0
   in_app_purchase_storekit: ^0.3.20
-  in_app_purchase_android: ^0.3.6
+  in_app_purchase_android: ^0.5.0+2
+  url_launcher: ^6.3.2
+  # Gravação de voz para o Mentor (transcrição via Groq Whisper).
   record: ^6.2.1
 
 dev_dependencies:

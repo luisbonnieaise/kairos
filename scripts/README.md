@@ -14,6 +14,8 @@ Schemas Postgres do projeto Kairo (Supabase). Rodar **na ordem numerada** no SQL
 8. `08_subscriptions.sql` — Kairo Premium **multiplataforma**: tabela `subscriptions` agnóstica de provider (Stripe/Apple/Google) + `billing_events` (idempotência de todos os providers) + `is_premium()` (inclui `grace`) + RPC `aplicar_estado_assinatura()` (convergência cross-provider). Substitui a versão Stripe-only do doc 03 — ver [docs/07-billing-multiplataforma.md](../docs/07-billing-multiplataforma.md). Migra bancos antigos sem perder linhas.
 9. `09_cron_relatorios.sql` — fila + dispatcher pg_cron/pg_net que mata o burst de domingo
 10. `10_indices_revisao.sql` — auditoria de índices p/ 30k MAUs (sem efeito; registro de cobertura)
+11. `11_migracao_categorias_enum.sql` — migra `praticas.categoria` de rótulos PT para enums ASCII estáveis
+12. `12_billing_multiplataforma.sql` — billing agnóstico de provider (Apple/Google/Stripe): colunas novas em `subscriptions` + `billing_events` + `is_premium()` com `grace` + RPC `aplicar_estado_assinatura()`. Aditivo sobre o `08`.
 
 > Após rodar o `09`, é obrigatório setar 2 GUC com `ALTER DATABASE postgres SET …` (ver cabeçalho do arquivo e `docs/06-runbook-deploy.md §6`). Sem isso o dispatcher é no-op silencioso por design.
 

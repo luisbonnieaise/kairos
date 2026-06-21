@@ -1,4 +1,4 @@
-package com.example.kairo
+package com.thekairo.app
 
 import com.example.kairo.widget.data.KairoStore
 import com.example.kairo.widget.providers.KairoWidgetRefresh

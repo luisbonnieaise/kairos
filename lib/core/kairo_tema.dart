@@ -1,4 +1,8 @@
 import 'dart:math' as math;
+// CupertinoPageTransitionsBuilder migrou de material.dart para cupertino.dart
+// no Flutter 3.44 (PR flutter#179776). Import explícito mantém compatibilidade
+// com 3.44+ e versões anteriores (onde o Material ainda o exporta).
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';

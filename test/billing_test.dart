@@ -1,6 +1,7 @@
 // Testes da derivação pura de premium no client (lib/core/billing.dart).
 // Mantém paridade EXATA com public.is_premium() no banco: premium ⇔
-// status ∈ {active, trialing} AND current_period_end > now.
+// status ∈ {active, trialing, grace} AND current_period_end > now.
+// ('grace' = janela de retry de cobrança Apple/Google que ainda dá acesso.)
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kairo/core/billing.dart';
@@ -30,6 +31,17 @@ void main() {
         isTrue,
       );
     });
+
+    test('grace + period_end no futuro → true', () {
+      expect(
+        Billing.derivarPremium(
+          status: 'grace',
+          periodoFim: agora.add(const Duration(days: 3)),
+          agora: agora,
+        ),
+        isTrue,
+      );
+    });
   });
 
   group('Billing.derivarPremium — status NÃO habilitantes', () {
@@ -41,6 +53,7 @@ void main() {
       'canceled',
       'unpaid',
       'paused',
+      'expired',
     ]) {
       test('$s → false mesmo com period_end no futuro', () {
         expect(
