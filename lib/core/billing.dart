@@ -37,7 +37,7 @@ class Billing {
   /// ofertas. Devem casar com a App Store Connect / Play Console.
   static const Set<String> _idsApple  = {
     'app.kairo.premium.monthly',
-    'app.kairo.premium.yearly',
+    'app.kairo.premium.anual',
   };
   static const Set<String> _idsGoogle = {'premium'};
 

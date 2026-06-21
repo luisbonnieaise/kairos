@@ -390,6 +390,12 @@ class T {
     'Intentar de nuevo',
     'Erneut versuchen',
   );
+  static String get premiumTermosRenovacao => _g(
+    'Novos assinantes ganham 7 dias grátis. Depois, a assinatura renova automaticamente pelo preço exibido até você cancelar nos Ajustes do dispositivo.',
+    'New subscribers get 7 days free. After that, the subscription renews automatically at the displayed price until you cancel in your device settings.',
+    'Los nuevos suscriptores obtienen 7 días gratis. Después, la suscripción se renueva automáticamente al precio mostrado hasta que canceles en los ajustes del dispositivo.',
+    'Neue Abonnenten erhalten 7 Tage gratis. Danach verlängert sich das Abo automatisch zum angezeigten Preis, bis du in den Geräteeinstellungen kündigst.',
+  );
   static String get assinaturaErro => _g(
     'Não foi possível concluir a compra. Tente novamente.',
     'Could not complete the purchase. Try again.',

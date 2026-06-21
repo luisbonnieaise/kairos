@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../core/kairo_tema.dart';
 import '../core/billing.dart';
 import '../core/i18n.dart';
+import 'portao.dart' show kUrlTermos, kUrlPrivacidade;
 
 /// Paywall do Kairo Premium — compra via IAP nativo (StoreKit / Play Billing).
 ///
@@ -121,6 +123,13 @@ class _TelaPremiumState extends State<TelaPremium> {
     await Billing.instance.restaurar();
   }
 
+  Future<void> _abrirLink(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri != null) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final billing = Billing.instance;
@@ -202,7 +211,7 @@ class _TelaPremiumState extends State<TelaPremium> {
                               style: KT.caption(cor: KC.kin),
                             ),
                           ),
-                        ] else
+                        ] else ...[
                           ..._produtos.map(
                             (p) => Padding(
                               padding: const EdgeInsets.only(bottom: 12),
@@ -213,6 +222,33 @@ class _TelaPremiumState extends State<TelaPremium> {
                               ),
                             ),
                           ),
+                          // Disclosure obrigatório (Apple 3.1.2): trial grátis +
+                          // renovação automática + Termos de Uso/Privacidade.
+                          const SizedBox(height: 16),
+                          Text(T.premiumTermosRenovacao,
+                              style: KT.caption(cor: KC.fumo)),
+                          const SizedBox(height: 12),
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text('${T.portaoAoAssinar} ',
+                                  style: KT.caption(cor: KC.fumo)),
+                              GestureDetector(
+                                onTap: () => _abrirLink(kUrlTermos),
+                                child: Text(T.termosDeUso,
+                                    style: KT.caption(cor: KC.cinza)),
+                              ),
+                              Text(' ${T.conector_e} ',
+                                  style: KT.caption(cor: KC.fumo)),
+                              GestureDetector(
+                                onTap: () => _abrirLink(kUrlPrivacidade),
+                                child: Text(T.politicaPrivacidade,
+                                    style: KT.caption(cor: KC.cinza)),
+                              ),
+                              Text('.', style: KT.caption(cor: KC.fumo)),
+                            ],
+                          ),
+                        ],
                       ],
 
                       if (_aviso != null) ...[
