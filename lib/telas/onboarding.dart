@@ -73,8 +73,8 @@ class _TelaOnboardingState extends State<TelaOnboarding> {
       context,
       PageRouteBuilder(
         // Novo usuário entra pelo PORTÃO (hard paywall) antes do app.
-        pageBuilder: (_, __, ___) => const TelaPortao(),
-        transitionsBuilder: (_, anim, __, child) =>
+        pageBuilder: (_, _, _) => const TelaPortao(),
+        transitionsBuilder: (_, anim, _, child) =>
             FadeTransition(opacity: anim, child: child),
         transitionDuration: const Duration(milliseconds: 600),
       ),

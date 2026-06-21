@@ -238,7 +238,7 @@ class _TelaPremiumState extends State<TelaPremium> {
                                 child: Text(T.termosDeUso,
                                     style: KT.caption(cor: KC.cinza)),
                               ),
-                              Text(' ${T.conector_e} ',
+                              Text(' ${T.conectorE} ',
                                   style: KT.caption(cor: KC.fumo)),
                               GestureDetector(
                                 onTap: () => _abrirLink(kUrlPrivacidade),

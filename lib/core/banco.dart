@@ -237,8 +237,8 @@ class BancoMensagens {
       'user_id': user.id,
       'role': role,
       'conteudo': conteudo,
-      if (audioPath != null) 'audio_path': audioPath,
-      if (audioDuracaoMs != null) 'audio_duracao_ms': audioDuracaoMs,
+      'audio_path': ?audioPath,
+      'audio_duracao_ms': ?audioDuracaoMs,
     });
   }
 
@@ -283,8 +283,8 @@ class BancoPraticas {
         .insert({
           'user_id': user.id,
           'nome': nome,
-          if (duracao != null) 'duracao': duracao,
-          if (categoria != null) 'categoria': categoria,
+          'duracao': ?duracao,
+          'categoria': ?categoria,
         })
         .select()
         .single();

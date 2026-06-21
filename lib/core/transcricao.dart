@@ -70,7 +70,7 @@ class Transcricao {
         'transcrever-audio',
         body: {
           'audio_path': audioPath,
-          if (duracaoMs != null) 'duracao_ms': duracaoMs,
+          'duracao_ms': ?duracaoMs,
           'idioma': T.idioma,
         },
       );

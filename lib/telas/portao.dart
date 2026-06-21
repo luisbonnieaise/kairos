@@ -432,7 +432,7 @@ class _LinhaLegal extends StatelessWidget {
       children: [
         Text('${T.portaoAoAssinar} ', style: estilo),
         GestureDetector(onTap: onTermos, child: Text(T.termosDeUso, style: link)),
-        Text(' ${T.conector_e} ', style: estilo),
+        Text(' ${T.conectorE} ', style: estilo),
         GestureDetector(onTap: onPrivacidade, child: Text(T.politicaPrivacidade, style: link)),
         Text('.', style: estilo),
       ],

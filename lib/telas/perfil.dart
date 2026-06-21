@@ -201,6 +201,7 @@ class _TelaPerfilState extends State<TelaPerfil> {
       );
     }
 
+    if (!mounted) return;
     final escolhido = await showTimePicker(
       context: context,
       initialTime: inicial,
@@ -338,8 +339,8 @@ class _TelaPerfilState extends State<TelaPerfil> {
     // Substitui toda a pilha pela tela de Boas-Vindas
     Navigator.of(context).pushAndRemoveUntil(
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const TelaBoasVindas(),
-        transitionsBuilder: (_, anim, __, child) =>
+        pageBuilder: (_, _, _) => const TelaBoasVindas(),
+        transitionsBuilder: (_, anim, _, child) =>
             FadeTransition(opacity: anim, child: child),
         transitionDuration: const Duration(milliseconds: 600),
       ),
@@ -990,10 +991,12 @@ class _SheetEditarState extends State<_SheetEditar> {
       await widget.aoSalvar(texto);
       if (mounted) Navigator.pop(context);
     } catch (_) {
-      if (mounted) setState(() {
-        _salvando = false;
-        _erro = T.erroGenerico;
-      });
+      if (mounted) {
+        setState(() {
+          _salvando = false;
+          _erro = T.erroGenerico;
+        });
+      }
     }
   }
 
