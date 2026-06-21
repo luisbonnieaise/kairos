@@ -12,8 +12,11 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    // Lado iOS do MethodChannel('kairo.widget') — escreve no App Group e
-    // recarrega as timelines dos widgets.
-    KairoWidgetBridge.register(with: engineBridge.pluginRegistry)
+    // NOTA: o widget nativo de iOS (KairoWidgetBridge / KairoWidgetExtension)
+    // existe no código mas NÃO está wired no projeto Xcode (nem o target da
+    // extensão, nem o App Group). Enquanto não for integrado de verdade, não o
+    // registramos aqui — senão o build quebra ("Cannot find KairoWidgetBridge").
+    // O lado Dart (WidgetSync/MethodChannel 'kairo.widget') é best-effort e
+    // apenas loga a ausência do handler no iOS.
   }
 }
