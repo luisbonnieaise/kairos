@@ -49,7 +49,9 @@ dependencies:
   flutter_foreground_task: ^9.2.2
   # Compra in-app (StoreKit 2 / Play Billing) — Kairo Premium IAP (Fase 07).
   in_app_purchase: ^3.3.0
-  in_app_purchase_storekit: ^0.3.20
+  # Importado direto por billing.dart (StoreKit 2). Tem que casar com o range do
+  # in_app_purchase 3.3.0, que exige storekit ^0.4.0.
+  in_app_purchase_storekit: ^0.4.0
   in_app_purchase_android: ^0.5.0+2
   url_launcher: ^6.3.2
   # Gravação de voz para o Mentor (transcrição via Groq Whisper).
