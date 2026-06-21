@@ -35,6 +35,13 @@ class Billing {
   DateTime? _periodoFim;
   String? _statusBruto;
 
+  /// SOMENTE para testes/screenshots (integration_test). Quando setado, [produtos]
+  /// devolve esta lista em vez de consultar a loja — assim a paywall renderiza
+  /// com preços de exemplo no Simulador iOS, sem depender de StoreKit/Play.
+  /// NUNCA afeta entitlement: [refresh]/[isPremium] continuam vindo do servidor.
+  @visibleForTesting
+  List<ProductDetails>? debugProdutosOverride;
+
   /// Pinga a cada [refresh] — a UI escuta para re-renderizar quando o estado
   /// converge (ex.: após o verify-purchase confirmar a compra).
   final ValueNotifier<int> mudancas = ValueNotifier<int>(0);
@@ -113,6 +120,8 @@ class Billing {
 
   /// Produtos de assinatura disponíveis nas lojas. Vazio se IAP indisponível.
   Future<List<ProductDetails>> produtos() async {
+    final override = debugProdutosOverride;
+    if (override != null) return override;
     final disponivel = await _iap.isAvailable();
     if (!disponivel) return const [];
     final resposta = await _iap.queryProductDetails(_idsProdutos);

@@ -1,4 +1,85 @@
 workflows:
+  # ── Screenshots da paywall no Simulador iOS ────────────────────────────────
+  # Gera os PNGs no tamanho nativo de cada device (6.9" é o set OBRIGATÓRIO da
+  # App Store; serve também para o "Review Screenshot" obrigatório de cada IAP).
+  # NÃO precisa de assinatura/App Store Connect: roda só em simulador.
+  # Baixe os artefatos em build/screenshots/ ao final do build.
+  ios-screenshots:
+    name: Kairo iOS - Screenshots (Simulador)
+    instance_type: mac_mini_m2
+    max_build_duration: 45
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Criar .env dummy (asset exigido pelo bundle; o teste não o lê)
+        script: |
+          cat > "$CM_BUILD_DIR/.env" <<EOF
+          SUPABASE_URL=https://placeholder.supabase.co
+          SUPABASE_KEY=placeholder-anon-key
+          EOF
+      - name: flutter pub get
+        script: flutter pub get
+      - name: Instalar CocoaPods
+        script: |
+          find . -name "Podfile" -execdir pod install \;
+      - name: Capturar screenshots da paywall
+        script: |
+          set -e
+          mkdir -p build/screenshots
+
+          # "Nome do simulador|rótulo (tamanho App Store)".
+          # iPhone 16 Pro Max = 6.9" (1320×2868) → OBRIGATÓRIO.
+          # iPhone 11 Pro Max = 6.5" (1242×2688) e iPad 13" → opcionais (pulam
+          # automaticamente se o runtime não estiver instalado nesta máquina).
+          DEVICES=(
+            "iPhone 16 Pro Max|iphone-6.9"
+            "iPhone 11 Pro Max|iphone-6.5"
+            "iPad Pro 13-inch (M4)|ipad-13"
+          )
+
+          for entry in "${DEVICES[@]}"; do
+            NAME="${entry%%|*}"
+            LABEL="${entry##*|}"
+
+            LINE=$(xcrun simctl list devices available | grep -F "$NAME (" | head -1 || true)
+            UDID=$(echo "$LINE" | grep -oiE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}' || true)
+            if [ -z "$UDID" ]; then
+              echo ">> '$NAME' indisponível nesta imagem — pulando."
+              continue
+            fi
+
+            echo ">> Capturando em $NAME ($LABEL) :: $UDID"
+            xcrun simctl boot "$UDID" || true
+            xcrun simctl bootstatus "$UDID" -b || true
+
+            if flutter drive \
+                --driver=test_driver/integration_test.dart \
+                --target=integration_test/screenshot_test.dart \
+                -d "$UDID"; then
+              if [ -f build/screenshots/paywall-premium.png ]; then
+                mv build/screenshots/paywall-premium.png \
+                   "build/screenshots/${LABEL}-paywall-premium.png"
+              fi
+            else
+              echo ">> flutter drive falhou em $NAME (seguindo para o próximo)."
+            fi
+            xcrun simctl shutdown "$UDID" || true
+          done
+
+          echo "── Screenshots gerados ──"
+          ls -la build/screenshots || true
+    artifacts:
+      - build/screenshots/*.png
+    publishing:
+      email:
+        recipients:
+          - realpedroluizchagas@gmail.com
+        notify:
+          success: true
+          failure: true
+
   ios-testflight:
     name: Kairo iOS - TestFlight
     instance_type: mac_mini_m2
