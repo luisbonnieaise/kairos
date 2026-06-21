@@ -1,7 +1,7 @@
 # Build iOS (IPA) via Codemagic → TestFlight
 
 Projeto já preparado:
-- Bundle ID alterado de `com.example.kairo` → **`com.kairo.app`**
+- Bundle ID: **`com.thekairo.app`** (igual ao registrado na App Store Connect e ao backend)
 - `codemagic.yaml` criado (workflow `ios-testflight`)
 - `.env` é recriado no build (não vai pro git — contém a chave Supabase)
 
@@ -13,7 +13,7 @@ O resto exige ações na Apple e no painel do Codemagic (não automatizável daq
 
 1. Em **App Store Connect → Apps → +**, crie o app:
    - Plataforma: iOS
-   - Bundle ID: `com.kairo.app` (se não existir, crie em
+   - Bundle ID: `com.thekairo.app` (se não existir, crie em
      **Certificates, IDs & Profiles → Identifiers**)
    - SKU: `kairo`
 2. Gere uma **App Store Connect API Key**:
@@ -58,8 +58,11 @@ Após o build (≈10–20 min) e processamento da Apple (≈5–15 min):
 
 ## Notas / ajustes possíveis
 
-- **`APP_STORE_APP_ID`** no yaml: opcional; preencha com o ID numérico do app
-  (App Store Connect → App → App Information) se quiser tracking explícito.
+- **Bundle ID**: o app na App Store Connect e o `bundle_identifier` no
+  `codemagic.yaml` precisam ser `com.thekairo.app` (igual ao backend). Se a
+  assinatura ainda falhar com *"no valid code signing certificates"*, a chave de
+  API App Store Connect precisa de permissão para **criar certificados** (papel
+  Admin) — ou crie 1 certificado de distribuição manualmente uma vez.
 - Quer um **.ipa baixável** em vez de TestFlight? Troque no `codemagic.yaml`:
   `distribution_type: ad_hoc` e remova o bloco `publishing.app_store_connect`.
   O IPA fica em **Artifacts** do build.
