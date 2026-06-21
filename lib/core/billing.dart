@@ -25,7 +25,7 @@ class Billing {
   /// IDs de produto configurados nas lojas (ver docs/08-guia-consoles-luis.md).
   /// iOS: dois produtos de assinatura. Android: um produto `premium` com base
   /// plans mensal/anual (o offer é escolhido no fluxo de compra).
-  static const _idsApple = {'app.kairo.premium.monthly', 'app.kairo.premium.yearly'};
+  static const _idsApple = {'app.kairo.premium.monthly', 'app.kairo.premium.anual'};
   static const _idsGoogle = {'premium'};
 
   final InAppPurchase _iap = InAppPurchase.instance;

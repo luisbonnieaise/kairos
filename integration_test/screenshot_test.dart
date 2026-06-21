@@ -63,7 +63,7 @@ Future<void> main() async {
         rawPrice: 19.90,
       ),
       _fake(
-        id: 'app.kairo.premium.yearly',
+        id: 'app.kairo.premium.anual',
         title: 'Premium Anual',
         price: r'R$ 149,90',
         rawPrice: 149.90,
