@@ -167,6 +167,25 @@ class _TelaPortaoState extends State<TelaPortao> {
 
   @override
   Widget build(BuildContext context) {
+    // Identifica mensal/anual para destacar o "melhor valor" (% de economia do
+    // anual frente a 12× o mensal). Só aparece quando ambos os planos carregam.
+    ProductDetails? mensal;
+    ProductDetails? anual;
+    for (final p in _produtos) {
+      final per = _periodo(p);
+      if (per == T.periodoMes) {
+        mensal = p;
+      } else if (per == T.periodoAno) {
+        anual = p;
+      }
+    }
+    int? economiaPct;
+    final m = mensal, a = anual;
+    if (m != null && a != null && m.rawPrice > 0) {
+      final pct = (100 * (1 - a.rawPrice / (m.rawPrice * 12))).round();
+      if (pct > 0) economiaPct = pct;
+    }
+
     // PopScope(canPop:false): o portão não é dispensável pelo botão voltar.
     return PopScope(
       canPop: false,
@@ -230,18 +249,22 @@ class _TelaPortaoState extends State<TelaPortao> {
                                   ),
                                 ),
                               ] else
-                                ..._produtos.map(
-                                  (p) => Padding(
+                                ..._produtos.map((p) {
+                                  final ehAnual =
+                                      anual != null && identical(p, anual);
+                                  return Padding(
                                     padding: const EdgeInsets.only(bottom: 12),
                                     child: _CartaoPlano(
                                       titulo: p.title,
                                       preco: p.price,
                                       periodo: _periodo(p),
+                                      destaque: ehAnual,
+                                      economiaPct: ehAnual ? economiaPct : null,
                                       habilitado: !_processando,
                                       onTap: () => _assinar(p),
                                     ),
-                                  ),
-                                ),
+                                  );
+                                }),
 
                               if (_aviso != null) ...[
                                 const SizedBox(height: 16),
@@ -296,52 +319,101 @@ class _TelaPortaoState extends State<TelaPortao> {
   }
 }
 
-/// Cartão de plano: título + preço da loja + badge de teste + CTA.
+/// Cartão de plano: nome + preço destacado, badge de teste e, no anual, o selo
+/// "melhor valor · economize X%". Tocar inicia a compra do plano.
 class _CartaoPlano extends StatelessWidget {
   final String titulo;
   final String preco;
   final String periodo;
+  final bool destaque;
+  final int? economiaPct;
   final bool habilitado;
   final VoidCallback onTap;
   const _CartaoPlano({
     required this.titulo,
     required this.preco,
     required this.periodo,
+    required this.destaque,
+    required this.economiaPct,
     required this.habilitado,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final precoLinha = periodo.isEmpty ? preco : '$preco/$periodo';
+    final selo = destaque
+        ? (economiaPct != null
+              ? '${T.portaoMelhorValor} · ${T.portaoEconomizar(economiaPct!)}'
+              : T.portaoMelhorValor)
+        : null;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: habilitado ? onTap : null,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: KC.washi,
-            borderRadius: BorderRadius.circular(8),
+            color: KC.card,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: destaque ? KC.kin : KC.linha,
+              width: destaque ? 1.5 : 1,
+            ),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('$titulo · $precoLinha', style: KT.body(cor: KC.fundo)),
-                    const SizedBox(height: 4),
-                    Text(T.portaoTesteBadge, style: KT.caption(cor: KC.sumi)),
-                  ],
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(titulo, style: KT.caption(cor: KC.cinza)),
+                  ),
+                  if (selo != null) _Pilula(texto: selo),
+                ],
               ),
-              Text(T.portaoComecarTeste, style: KT.body(cor: KC.fundo)),
+              const SizedBox(height: 10),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(preco, style: KT.titulo(cor: KC.texto)),
+                  if (periodo.isNotEmpty)
+                    Text(' /$periodo', style: KT.caption(cor: KC.cinza)),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  _Pilula(texto: T.portaoTesteBadge),
+                  const Spacer(),
+                  Text(T.portaoComecarTeste, style: KT.caption(cor: KC.kin)),
+                  const SizedBox(width: 4),
+                  Icon(Icons.arrow_forward, size: 14, color: KC.kin),
+                ],
+              ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Pílula em cobre translúcido (selo "melhor valor" / badge de teste grátis).
+class _Pilula extends StatelessWidget {
+  final String texto;
+  const _Pilula({required this.texto});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(
+        color: KC.kin.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(texto, style: KT.micro(cor: KC.kin)),
     );
   }
 }

@@ -436,6 +436,18 @@ class T {
     '7 días gratis',
     '7 Tage gratis',
   );
+  static String get portaoMelhorValor => _g(
+    'Melhor valor',
+    'Best value',
+    'Mejor valor',
+    'Bester Wert',
+  );
+  static String portaoEconomizar(int pct) => _g(
+    'Economize $pct%',
+    'Save $pct%',
+    'Ahorra $pct%',
+    'Spare $pct%',
+  );
   static String get portaoAoAssinar => _g(
     'Ao assinar, você concorda com os',
     'By subscribing, you agree to the',
