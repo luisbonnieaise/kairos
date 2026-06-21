@@ -555,6 +555,12 @@ class T {
     'El Mentor es una función premium. Suscríbete para conversar y enviar audios.',
     'Der Mentor ist eine Premium-Funktion. Abonniere, um zu chatten und Audios zu senden.',
   );
+  static String get mentorPuxarHistorico => _g(
+    'Puxe para baixo para ver conversas anteriores',
+    'Pull down to see previous conversations',
+    'Desliza hacia abajo para ver conversaciones anteriores',
+    'Nach unten ziehen, um frühere Gespräche zu sehen',
+  );
 
   // ── DOJÔ (PRÁTICAS) ────────────────────────────────────────────────────────
   static String get dojo => _g('Dôjo', 'Dojo', 'Dojo', 'Dojo');

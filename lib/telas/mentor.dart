@@ -61,23 +61,24 @@ class _TelaMentorState extends State<TelaMentor> {
 
   Future<void> _carregarHistorico() async {
     try {
-      final salvas = await BancoMensagens.carregar();
       final perfil = await BancoPerfil.carregar();
       final nome = (perfil?['nome'] as String?)?.trim() ?? '';
+      // Ao abrir, a conversa anterior fica OCULTA (começa limpa). Só checamos
+      // se há histórico — pra ligar o hint e o gesto de puxar pra baixo.
+      final temHistorico = await BancoMensagens.existeHistorico();
 
       if (!mounted) return;
 
       setState(() {
-        if (salvas.isEmpty) {
+        if (temHistorico) {
+          // Cursor = agora: a primeira puxada traz as mensagens mais recentes,
+          // e cada puxada seguinte vai mais pra trás no tempo.
+          _maisAntiga = DateTime.now();
+          _temMaisHistorico = true;
+        } else {
+          // Sem histórico: saudação de boas-vindas, sem hint nem gesto.
           _mensagens.add(_Mensagem(texto: T.mentorSaudacao(nome), doMentor: true));
           _temMaisHistorico = false;
-        } else {
-          for (final m in salvas) {
-            _mensagens.add(_mensagemDeRegistro(m));
-          }
-          _maisAntiga = _createdAt(salvas.first);
-          // Página cheia → provavelmente há histórico mais antigo a carregar.
-          _temMaisHistorico = salvas.length >= BancoMensagens.pagina;
         }
       });
 
@@ -367,6 +368,22 @@ class _TelaMentorState extends State<TelaMentor> {
     });
   }
 
+  /// Mensagem sutil (baixa opacidade) no topo do fluxo: indica que puxar pra
+  /// baixo revela as conversas anteriores. Some quando o histórico acaba.
+  Widget _hintHistorico() => Padding(
+        padding: const EdgeInsets.only(bottom: 20),
+        child: Center(
+          child: Opacity(
+            opacity: 0.45,
+            child: Text(
+              T.mentorPuxarHistorico,
+              style: KT.caption(),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+
   @override
   void dispose() {
     _timerGravacao?.cancel();
@@ -420,12 +437,17 @@ class _TelaMentorState extends State<TelaMentor> {
                 controller: _scrollController,
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
-                itemCount: _mensagens.length + (_pensando ? 1 : 0),
+                itemCount: (_temMaisHistorico ? 1 : 0) +
+                    _mensagens.length +
+                    (_pensando ? 1 : 0),
                 itemBuilder: (context, i) {
-                  if (_pensando && i == _mensagens.length) {
+                  // Hint sutil no topo enquanto houver histórico a revelar.
+                  if (_temMaisHistorico && i == 0) return _hintHistorico();
+                  final idx = _temMaisHistorico ? i - 1 : i;
+                  if (_pensando && idx == _mensagens.length) {
                     return const _IndicadorPensando();
                   }
-                  return _BolhaMensagem(mensagem: _mensagens[i]);
+                  return _BolhaMensagem(mensagem: _mensagens[idx]);
                 },
               ),
             ),
