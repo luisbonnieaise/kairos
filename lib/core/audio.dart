@@ -11,7 +11,6 @@ class KairoAudio {
   static final _ambiente = AudioPlayer();
   static final _dormir = AudioPlayer();
   static bool _configurado = false;
-  static bool _dormirConfigurado = false;
   static bool _fgInicializado = false;
 
   /// Contexto de áudio padrão do app: mistura com outros apps e NÃO toca com a
@@ -142,8 +141,13 @@ class KairoAudio {
     }
   }
 
+  /// (Re)aplica o contexto de áudio de sono (categoria `playback` no iOS) a
+  /// CADA chamada — sem cache. Motivo: `pararDormir()` restaura a sessão global
+  /// do iOS para `ambient` ao encerrar/trocar de som; se não reaplicássemos
+  /// `playback`, o próximo som tocaria sob `ambient` e seria silenciado pelo
+  /// botão de silêncio / tela bloqueada (bug iOS: 1º som tocava, do 2º em
+  /// diante não).
   static Future<void> _configurarDormir() async {
-    if (_dormirConfigurado) return;
     try {
       final ctx = AudioContext(
         android: AudioContextAndroid(
@@ -160,7 +164,6 @@ class KairoAudio {
       );
       await _dormir.setReleaseMode(ReleaseMode.loop);
       await _dormir.setAudioContext(ctx);
-      _dormirConfigurado = true;
     } catch (e) {
       debugPrint('Erro ao configurar áudio de sono: $e');
     }
