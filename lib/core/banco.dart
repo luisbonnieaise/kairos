@@ -471,4 +471,20 @@ class BancoReflexoes {
       'resposta': resposta,
     });
   }
+
+  /// Atualiza a resposta de uma reflexão existente (edição da última resposta).
+  /// O filtro por user_id é redundante com o RLS, mas explícito por segurança.
+  static Future<void> atualizar({
+    required String id,
+    required String resposta,
+  }) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    await supabase
+        .from('reflexoes')
+        .update({'resposta': resposta})
+        .eq('id', id)
+        .eq('user_id', user.id);
+  }
 }

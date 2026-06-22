@@ -29,6 +29,7 @@ class _TelaJardimState extends State<TelaJardim> {
   }
 
   _Reflexao _mapear(Map<String, dynamic> d) => _Reflexao(
+        id: d['id'] as String? ?? '',
         data: DateTime.tryParse(d['created_at'] as String? ?? '') ?? DateTime.now(),
         momento: d['momento'] as String,
         pergunta: d['pergunta'] as String,
@@ -124,6 +125,31 @@ class _TelaJardimState extends State<TelaJardim> {
               pergunta: pergunta,
               resposta: resposta,
             );
+            await _carregar();
+          },
+        ),
+        transitionsBuilder: (_, anim, _, child) =>
+            FadeTransition(opacity: anim, child: child),
+        transitionDuration: const Duration(milliseconds: 400),
+      ),
+    );
+  }
+
+  /// Edita a última resposta: abre a tela de escrita pré-preenchida e salva
+  /// por cima (update) na mesma reflexão.
+  void _editarReflexao(_Reflexao r) {
+    if (r.id.isEmpty) return; // sem id (cache antigo) — não dá pra atualizar
+    HapticFeedback.lightImpact();
+
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, _, _) => _TelaEscrita(
+          momento: r.momento,
+          pergunta: r.pergunta,
+          textoInicial: r.resposta,
+          aoSalvar: (resposta) async {
+            await BancoReflexoes.atualizar(id: r.id, resposta: resposta);
             await _carregar();
           },
         ),
@@ -231,7 +257,14 @@ class _TelaJardimState extends State<TelaJardim> {
               else if (_reflexoes.isEmpty)
                 Text(T.vazioComece, style: KT.caption())
               else
-                ..._reflexoes.map((r) => _ItemReflexao(reflexao: r)),
+                ...List.generate(_reflexoes.length, (i) {
+                  final r = _reflexoes[i];
+                  // Só a reflexão mais recente (índice 0) é editável.
+                  return _ItemReflexao(
+                    reflexao: r,
+                    aoEditar: i == 0 ? () => _editarReflexao(r) : null,
+                  );
+                }),
 
               const SizedBox(height: 48),
             ],
@@ -244,7 +277,8 @@ class _TelaJardimState extends State<TelaJardim> {
 
 class _ItemReflexao extends StatelessWidget {
   final _Reflexao reflexao;
-  const _ItemReflexao({required this.reflexao});
+  final VoidCallback? aoEditar;
+  const _ItemReflexao({required this.reflexao, this.aoEditar});
 
   String _formatarData(DateTime data) {
     final agora = DateTime.now();
@@ -269,6 +303,17 @@ class _ItemReflexao extends StatelessWidget {
               Text(reflexao.momento.toUpperCase(), style: KT.micro()),
               const SizedBox(width: 16),
               Text(_formatarData(reflexao.data), style: KT.micro(cor: KC.fumo)),
+              if (aoEditar != null) ...[
+                const Spacer(),
+                GestureDetector(
+                  onTap: aoEditar,
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    child: Icon(Icons.edit_outlined, size: 16, color: KC.fumo),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 8),
@@ -286,11 +331,13 @@ class _ItemReflexao extends StatelessWidget {
 class _TelaEscrita extends StatefulWidget {
   final String momento;
   final String pergunta;
+  final String? textoInicial;
   final Future<void> Function(String) aoSalvar;
 
   const _TelaEscrita({
     required this.momento,
     required this.pergunta,
+    this.textoInicial,
     required this.aoSalvar,
   });
 
@@ -301,6 +348,15 @@ class _TelaEscrita extends StatefulWidget {
 class _TelaEscritaState extends State<_TelaEscrita> {
   final _controller = TextEditingController();
   bool _salvando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final inicial = widget.textoInicial ?? '';
+    _controller.text = inicial;
+    // Cursor no fim, pra continuar de onde parou.
+    _controller.selection = TextSelection.collapsed(offset: inicial.length);
+  }
 
   Future<void> _salvar() async {
     final texto = _controller.text.trim();
@@ -388,12 +444,14 @@ class _TelaEscritaState extends State<_TelaEscrita> {
 }
 
 class _Reflexao {
+  final String id;
   final DateTime data;
   final String momento;
   final String pergunta;
   final String resposta;
 
   _Reflexao({
+    required this.id,
     required this.data,
     required this.momento,
     required this.pergunta,
