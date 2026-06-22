@@ -76,16 +76,17 @@ class _TelaHomeState extends State<TelaHome> {
   @override
   Widget build(BuildContext context) {
     final bottomPad = MediaQuery.of(context).padding.bottom;
-    // No iOS o safe area inferior (indicador de home, ~34px) é maior que no
-    // Android, o que empurra a barra flutuante mais pra cima. Baixamos um
-    // pouco só no iOS para alinhar a altura visual com a do Android.
-    final ajusteIOS = defaultTargetPlatform == TargetPlatform.iOS ? 12.0 : 0.0;
+    // SOMENTE no iOS: barra bem baixa, colada ao indicador de home (estilo
+    // Instagram) — folga pequena fixa em vez do safe area cheio (~34px), que
+    // empurrava a barra pra cima. Android segue intacto: safe area + folga.
+    final isIOS = defaultTargetPlatform == TargetPlatform.iOS;
+    final gapBarra = isIOS ? 10.0 : bottomPad + 12;
     return Scaffold(
       backgroundColor: KC.sumi,
       extendBody: true,
       body: IndexedStack(index: _aba, children: _telas),
       bottomNavigationBar: Padding(
-        padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPad + 12 - ajusteIOS),
+        padding: EdgeInsets.fromLTRB(16, 0, 16, gapBarra),
         child: _NavBar(
           selecionado: _aba,
           aoSelecionar: _selecionar,
