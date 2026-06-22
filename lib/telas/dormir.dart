@@ -271,11 +271,12 @@ class TelaDormir extends StatefulWidget {
 }
 
 class _TelaDormirState extends State<TelaDormir>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const double _volume = 0.7;
   Timer? _timer;
   bool _encerrando = false;
   late AnimationController _pulsoCtrl;
+  late AnimationController _entradaCtrl;
 
   @override
   void initState() {
@@ -287,10 +288,18 @@ class _TelaDormirState extends State<TelaDormir>
       duration: const Duration(seconds: 5),
     )..repeat(reverse: true);
 
+    // Entrada da lua: surge pequena e apagada, cresce com o luar brotando.
+    // Toca uma vez, em sincronia com o início do som.
+    _entradaCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    );
+
     Future.delayed(const Duration(milliseconds: 400), () {
       // Não inicia o áudio se a sessão já está sendo encerrada (ex.: toque
       // longo nos primeiros 400ms) — evitaria um "blip" de som no fade-out.
       if (!mounted || _encerrando) return;
+      _entradaCtrl.forward();
       KairoAudio.tocarDormir(widget.arquivo, volume: _volume);
     });
 
@@ -324,6 +333,7 @@ class _TelaDormirState extends State<TelaDormir>
   void dispose() {
     _timer?.cancel();
     _pulsoCtrl.dispose();
+    _entradaCtrl.dispose();
     KairoAudio.pararDormir();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
@@ -340,15 +350,43 @@ class _TelaDormirState extends State<TelaDormir>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                FadeTransition(
-                  opacity: Tween<double>(begin: 0.35, end: 0.7).animate(
-                    CurvedAnimation(parent: _pulsoCtrl, curve: Curves.easeInOut),
-                  ),
-                  child: Icon(
-                    Icons.nightlight_round,
-                    size: 96,
-                    color: KC.acento.withValues(alpha: 0.7),
-                  ),
+                AnimatedBuilder(
+                  animation: Listenable.merge([_entradaCtrl, _pulsoCtrl]),
+                  builder: (_, child) {
+                    // entrada: 0 -> 1 (uma vez); respiro: pulso contínuo.
+                    final entrada =
+                        Curves.easeOutCubic.transform(_entradaCtrl.value);
+                    final t = Curves.easeInOut.transform(_pulsoCtrl.value);
+
+                    // Escala: cresce de 0.6 ao tamanho cheio e depois respira
+                    // de leve (±0.02), só após ter entrado.
+                    final scale =
+                        (0.6 + 0.4 * entrada) * (1.0 + 0.02 * (t * 2 - 1) * entrada);
+
+                    return Transform.scale(
+                      scale: scale,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            // Halo de luar: brota na entrada e pulsa devagar.
+                            BoxShadow(
+                              color: KC.acento
+                                  .withValues(alpha: entrada * (0.10 + 0.16 * t)),
+                              blurRadius: (8 + 18 * t) * entrada,
+                              spreadRadius: 1 + 3 * entrada,
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          Icons.nightlight_round,
+                          size: 96,
+                          color: KC.acento
+                              .withValues(alpha: entrada * (0.45 + 0.25 * t)),
+                        ),
+                      ),
+                    );
+                  },
                 ),
 
                 const SizedBox(height: 48),
