@@ -395,75 +395,119 @@ class _TelaMentorState extends State<TelaMentor> {
 
   @override
   Widget build(BuildContext context) {
+    final tecladoAberto = MediaQuery.of(context).viewInsets.bottom > 0;
     return SafeArea(
-      child: Column(
+      child: Stack(
         children: [
-          // Cabeçalho — mesmo padrão visual do Dojô
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 48, 24, 0),
+          // Tocar em qualquer área fora do campo/teclado fecha o teclado.
+          GestureDetector(
+            onTap: () => FocusScope.of(context).unfocus(),
+            behavior: HitTestBehavior.translucent,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    KairoEnso(
-                      tamanho: 36,
-                      cor: KC.acento.withValues(alpha: 0.75),
-                      duracao: const Duration(seconds: 12),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(child: KT.tituloGradiente(T.mentor)),
-                  ],
+                // Cabeçalho — mesmo padrão visual do Dojô
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 48, 24, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          KairoEnso(
+                            tamanho: 36,
+                            cor: KC.acento.withValues(alpha: 0.75),
+                            duracao: const Duration(seconds: 12),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(child: KT.tituloGradiente(T.mentor)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(T.mentorSubtitulo, style: KT.caption()),
+                      const SizedBox(height: 32),
+                      KT.divisor(),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 8),
-                Text(T.mentorSubtitulo, style: KT.caption()),
-                const SizedBox(height: 32),
-                KT.divisor(),
+
+                // Fluxo de mensagens — sem balões, texto puro. Puxar pra baixo no
+                // topo carrega o histórico mais antigo (conversas anteriores).
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _carregarMaisAntigas,
+                    color: KC.acento,
+                    backgroundColor: KC.card,
+                    edgeOffset: 8,
+                    child: ListView.builder(
+                      controller: _scrollController,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+                      itemCount: (_temMaisHistorico ? 1 : 0) +
+                          _mensagens.length +
+                          (_pensando ? 1 : 0),
+                      itemBuilder: (context, i) {
+                        // Hint sutil no topo enquanto houver histórico a revelar.
+                        if (_temMaisHistorico && i == 0) return _hintHistorico();
+                        final idx = _temMaisHistorico ? i - 1 : i;
+                        if (_pensando && idx == _mensagens.length) {
+                          return const _IndicadorPensando();
+                        }
+                        return _BolhaMensagem(mensagem: _mensagens[idx]);
+                      },
+                    ),
+                  ),
+                ),
+
+                // Campo de entrada — alterna entre texto e barra de gravação
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    24,
+                    8,
+                    24,
+                    MediaQuery.of(context).viewInsets.bottom > 0 ? 8 : 16,
+                  ),
+                  child: _gravando ? _barraGravacao() : _barraEntrada(),
+                ),
               ],
             ),
           ),
-
-          // Fluxo de mensagens — sem balões, texto puro. Puxar pra baixo no
-          // topo carrega o histórico mais antigo (conversas anteriores).
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _carregarMaisAntigas,
-              color: KC.acento,
-              backgroundColor: KC.card,
-              edgeOffset: 8,
-              child: ListView.builder(
-                controller: _scrollController,
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
-                itemCount: (_temMaisHistorico ? 1 : 0) +
-                    _mensagens.length +
-                    (_pensando ? 1 : 0),
-                itemBuilder: (context, i) {
-                  // Hint sutil no topo enquanto houver histórico a revelar.
-                  if (_temMaisHistorico && i == 0) return _hintHistorico();
-                  final idx = _temMaisHistorico ? i - 1 : i;
-                  if (_pensando && idx == _mensagens.length) {
-                    return const _IndicadorPensando();
-                  }
-                  return _BolhaMensagem(mensagem: _mensagens[idx]);
-                },
-              ),
-            ),
-          ),
-
-          // Campo de entrada — alterna entre texto e barra de gravação
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              24,
-              8,
-              24,
-              MediaQuery.of(context).viewInsets.bottom > 0 ? 8 : 16,
-            ),
-            child: _gravando ? _barraGravacao() : _barraEntrada(),
-          ),
+          // Seta para fechar o teclado — só aparece com o teclado aberto.
+          if (tecladoAberto)
+            Positioned(top: 0, left: 4, child: _botaoFecharTeclado(context)),
         ],
+      ),
+    );
+  }
+
+  // Pequena seta (canto superior esquerdo) que fecha o teclado. O teclado de
+  // texto puro do iOS não tem botão "Done"; esta é a saída explícita, além de
+  // tocar fora do campo.
+  Widget _botaoFecharTeclado(BuildContext context) {
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        margin: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: KC.card,
+          shape: BoxShape.circle,
+          border: KC.escuro ? null : Border.all(color: KC.linha, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: KC.escuro ? 0.22 : 0.07),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Icon(
+          Icons.keyboard_arrow_down_rounded,
+          color: KC.acento,
+          size: 24,
+        ),
       ),
     );
   }
