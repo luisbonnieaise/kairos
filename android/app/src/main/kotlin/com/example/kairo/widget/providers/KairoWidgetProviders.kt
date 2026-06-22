@@ -8,7 +8,7 @@ import android.content.Intent
 import android.net.Uri
 import android.view.View
 import android.widget.RemoteViews
-import com.example.kairo.R
+import com.thekairo.app.R
 import com.example.kairo.widget.data.KairoFormat
 import com.example.kairo.widget.data.KairoStore
 import com.example.kairo.widget.data.KairoWidgetData
