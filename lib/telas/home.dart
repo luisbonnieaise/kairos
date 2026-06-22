@@ -80,7 +80,7 @@ class _TelaHomeState extends State<TelaHome> {
     // Instagram) — folga pequena fixa em vez do safe area cheio (~34px), que
     // empurrava a barra pra cima. Android segue intacto: safe area + folga.
     final isIOS = defaultTargetPlatform == TargetPlatform.iOS;
-    final gapBarra = isIOS ? 10.0 : bottomPad + 12;
+    final gapBarra = isIOS ? 16.0 : bottomPad + 12;
     return Scaffold(
       backgroundColor: KC.sumi,
       extendBody: true,
