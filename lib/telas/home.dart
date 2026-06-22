@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/kairo_tema.dart';
 import '../core/banco.dart';
+import '../core/notificacoes.dart';
 import '../core/cache.dart';
 import '../core/datas.dart';
 import '../core/i18n.dart';
@@ -56,8 +57,49 @@ class _TelaHomeState extends State<TelaHome> {
   @override
   void initState() {
     super.initState();
-    // Tutorial da aba inicial (Início) após o primeiro frame.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _mostrarTutorialAba(0));
+    // Tutorial da aba inicial (Início) + configuração de notificações após o
+    // primeiro frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _mostrarTutorialAba(0);
+      _configurarNotificacoes();
+    });
+  }
+
+  /// Garante permissão e agendamento de notificações na entrada da Home.
+  /// Necessário porque o pedido de permissão + agendamento viviam só no
+  /// onboarding, que os fluxos de confirmação de e-mail e de login PULAM —
+  /// então a maioria dos usuários nunca recebia a permissão nem tinha
+  /// notificações agendadas. Roda a cada abertura da Home, o que também
+  /// re-arma o agendado (que é limpo a cada reinstalação de build).
+  Future<void> _configurarNotificacoes() async {
+    try {
+      if (!await KairoNotificacoes.temPermissao()) {
+        final concedida = await KairoNotificacoes.pedirPermissao();
+        if (!concedida) return; // usuário negou — respeita a escolha
+      }
+
+      final perfil = await BancoPerfil.carregar();
+      final horario = perfil?['horario_lembrete'] as String?;
+
+      if (horario == null || horario.isEmpty) {
+        // Primeira configuração (usuário pulou o onboarding): aplica os padrões
+        // — mesmos do onboarding: lembrete 07:00 + carta semanal + jardim.
+        await BancoPerfil.atualizar(horarioLembrete: '07:00:00');
+        await KairoNotificacoes.agendarLembreteDiario(7, 0);
+        await KairoNotificacoes.agendarCartaSemanal();
+        await KairoNotificacoes.agendarJardim();
+      } else {
+        // Já configurado antes: re-arma a partir do perfil (sobrevive a
+        // reinstalações). Respeita o toggle do Jardim salvo pelo usuário.
+        final notifJardim = (perfil?['notif_jardim'] as bool?) ?? true;
+        await KairoNotificacoes.restaurarTodas(
+          horarioLembrete: horario,
+          notifJardim: notifJardim,
+        );
+      }
+    } catch (e) {
+      debugPrint('Erro ao configurar notificações na Home: $e');
+    }
   }
 
   void _mostrarTutorialAba(int i) {
