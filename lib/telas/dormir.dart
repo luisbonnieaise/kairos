@@ -326,7 +326,23 @@ class _TelaDormirState extends State<TelaDormir>
 
     if (!mounted) return;
     HapticFeedback.lightImpact();
-    Navigator.pop(context);
+
+    // suave == fim por tempo esgotado (único caller com suave: true é o timer):
+    // volta pra Home. Encerramento manual (botão/toque longo): volta pra escolha
+    // de sons, pra facilmente iniciar outro som.
+    if (suave) {
+      Navigator.pop(context);
+    } else {
+      Navigator.pushReplacement(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (_, _, _) => const TelaDormirSelecao(),
+          transitionsBuilder: (_, anim, _, child) =>
+              FadeTransition(opacity: anim, child: child),
+          transitionDuration: const Duration(milliseconds: 500),
+        ),
+      );
+    }
   }
 
   @override
