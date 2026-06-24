@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show Color;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
@@ -16,6 +17,10 @@ class KairoNotificacoes {
   static const _canalLembreteId = 'kairo_pratica';
   static const _canalCartaId    = 'kairo_carta';
   static const _canalJardimId   = 'kairo_jardim';
+
+  // Cobre da marca (KairoTema._luzAcento). O Android usa essa cor pra tingir o
+  // ícone pequeno e o nome do app no cabeçalho da notificação.
+  static const _corMarca = Color(0xFFC28B63);
 
   // Frases curtas do Mentor (vem do i18n no idioma atual)
   static String _fraseAleatoria() {
@@ -35,7 +40,10 @@ class KairoNotificacoes {
       debugPrint('Erro ao detectar timezone: $e — usando UTC');
     }
 
-    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    // Ícone pequeno dedicado (silhueta vazada). O launcher (@mipmap/ic_launcher)
+    // é opaco, então o Android o renderizava como um borrão sólido na barra de
+    // status. Ver android/.../res/drawable/ic_stat_kairo.xml.
+    const android = AndroidInitializationSettings('@drawable/ic_stat_kairo');
     const ios = DarwinInitializationSettings(
       requestAlertPermission: false,
       requestBadgePermission: false,
@@ -92,6 +100,7 @@ class KairoNotificacoes {
     channelDescription: T.canalLembreteDesc,
     importance: Importance.high,
     priority: Priority.high,
+    color: _corMarca,
   );
 
   static AndroidNotificationDetails _detalhesCarta() => AndroidNotificationDetails(
@@ -100,6 +109,7 @@ class KairoNotificacoes {
     channelDescription: T.canalCartaDesc,
     importance: Importance.high,
     priority: Priority.high,
+    color: _corMarca,
   );
 
   static AndroidNotificationDetails _detalhesJardim() => AndroidNotificationDetails(
@@ -108,6 +118,7 @@ class KairoNotificacoes {
     channelDescription: T.canalJardimDesc,
     importance: Importance.high,
     priority: Priority.high,
+    color: _corMarca,
   );
 
   static Future<bool> pedirPermissao() async {

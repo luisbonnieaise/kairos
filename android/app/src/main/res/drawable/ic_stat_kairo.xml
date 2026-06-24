@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Ícone pequeno (status bar / cabeçalho) das notificações do Kairo.
+
+  O Android renderiza o "small icon" usando APENAS o canal alfa e aplica um
+  tint por cima — por isso NÃO dá pra usar @mipmap/ic_launcher (que é opaco e
+  vira um borrão sólido). Aqui desenhamos o anel da marca como silhueta cheia.
+
+  O furo central usa winding oposto (sweep 1 no círculo interno) em vez de
+  fillType="evenOdd", porque evenOdd só funciona a partir da API 24 — assim o
+  anel fica vazado em todas as versões suportadas (API 21+).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M2,12 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0 Z M3.8,12 a8.2,8.2 0 1,1 16.4,0 a8.2,8.2 0 1,1 -16.4,0 Z" />
+</vector>
